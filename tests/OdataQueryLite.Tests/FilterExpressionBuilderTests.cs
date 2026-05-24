@@ -221,5 +221,75 @@ namespace OdataQueryLite.Tests
             Assert.True(c.Match(new Customer { Email = null }));
             Assert.False(c.Match(new Customer { Email = "x@y" }));
         }
+
+        [Fact]
+        public void Year_on_nullable_date_propagates_null_per_spec()
+        {
+            // LastSeenAt is DateTimeOffset?. year(...) on null row must NOT throw and must
+            // not match — OData null-propagation: result is null → comparison silently false.
+            var c = Compile<Customer>("year(LastSeenAt) eq 2024");
+            Assert.Equal(typeof(int?), c.SlotTypes[0]);
+            Assert.True(c.Match(new Customer { LastSeenAt = new DateTimeOffset(2024, 5, 1, 0, 0, 0, TimeSpan.Zero) }));
+            Assert.False(c.Match(new Customer { LastSeenAt = new DateTimeOffset(2023, 5, 1, 0, 0, 0, TimeSpan.Zero) }));
+            Assert.False(c.Match(new Customer { LastSeenAt = null }));
+        }
+
+        public sealed class PricingRow
+        {
+            public decimal Amount { get; set; }
+            public decimal? Discount { get; set; }
+        }
+
+        [Fact]
+        public void Round_on_decimal_dispatches_to_decimal_overload()
+        {
+            // Math.Round(double) on a decimal column would have thrown at Expression.Call;
+            // dispatch on operand type picks Math.Round(decimal) — no double conversion, no
+            // precision loss for money.
+            var c = Compile<PricingRow>("round(Amount) eq 100");
+            Assert.True(c.Match(new PricingRow { Amount = 100.4m }));
+            Assert.False(c.Match(new PricingRow { Amount = 100.6m }));
+        }
+
+        [Fact]
+        public void Floor_on_nullable_decimal_propagates_null()
+        {
+            var c = Compile<PricingRow>("floor(Discount) eq 5");
+            Assert.True(c.Match(new PricingRow { Discount = 5.7m }));
+            Assert.False(c.Match(new PricingRow { Discount = 6.2m }));
+            Assert.False(c.Match(new PricingRow { Discount = null }));
+        }
+
+        public sealed class GuidEntity
+        {
+            public Guid Id { get; set; }
+        }
+
+        [Fact]
+        public void Guid_member_eq_string_literal_parses_at_pack()
+        {
+            // OData PK comparisons commonly send Guid as a string literal.
+            var c = Compile<GuidEntity>("Id eq '550e8400-e29b-41d4-a716-446655440000'");
+            Assert.Equal(typeof(Guid?), c.SlotTypes[0]);
+            Assert.True(c.Match(new GuidEntity { Id = Guid.Parse("550e8400-e29b-41d4-a716-446655440000") }));
+            Assert.False(c.Match(new GuidEntity { Id = Guid.Empty }));
+        }
+
+        public sealed class CustomList : List<Order> { }
+
+        public sealed class Sale
+        {
+            public CustomList Items { get; set; } = new CustomList();
+        }
+
+        [Fact]
+        public void Custom_collection_subclass_resolved_via_BaseType_walk()
+        {
+            // `CustomList : List<Order>` — t.IsGenericType is false but List<Order> is in
+            // the BaseType chain. AOT-clean (no GetInterfaces).
+            var c = Compile<Sale>("Items/$count gt 1");
+            Assert.True(c.Match(new Sale { Items = { new Order(), new Order() } }));
+            Assert.False(c.Match(new Sale { Items = { new Order() } }));
+        }
     }
 }

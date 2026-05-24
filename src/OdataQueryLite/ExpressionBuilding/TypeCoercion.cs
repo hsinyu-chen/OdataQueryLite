@@ -62,6 +62,13 @@ namespace OdataQueryLite.ExpressionBuilding
                 };
             }
 
+            if (target == typeof(Guid))
+            {
+                if (rawValue is string gs) return Guid.Parse(gs);
+                if (rawValue is Guid g) return g;
+                throw new ArgumentException($"Guid slot expects string / Guid literal; got {rawValue.GetType().Name}.");
+            }
+
             if (rawValue is IConvertible)
                 return Convert.ChangeType(rawValue, target, CultureInfo.InvariantCulture);
 

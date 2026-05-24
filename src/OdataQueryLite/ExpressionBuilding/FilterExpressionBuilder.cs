@@ -38,9 +38,10 @@ namespace OdataQueryLite.ExpressionBuilding
         }
 
         // Internal helpers reuse the same reflection / Expression-building primitives the
-        // public Build<T> already declared via RequiresUnreferencedCode / RequiresDynamicCode.
-        // Suppress the per-call analyzer noise — the contract is announced at the boundary.
-#pragma warning disable IL2026, IL2070, IL2072, IL3050
+        // public Build<T> already declared. Apply the same Requires* attributes to the class
+        // so the analyzer treats every method body as part of the same contract chain.
+        [RequiresUnreferencedCode("Resolves entity properties by name via reflection.")]
+        [RequiresDynamicCode("Constructs LINQ Expression trees and instantiates generic methods.")]
         private sealed class BuildContext
         {
             private readonly Type _entityType;
@@ -164,18 +165,22 @@ namespace OdataQueryLite.ExpressionBuilding
                     $"Property '{name}' not found on type '{t.Name}'. Available: {available}.");
             }
 
+            // Walks the BaseType chain to catch custom collections (`class MyOrders : List<Order>`)
+            // — `t.IsGenericType` is false for those, but List<Order> is in the inheritance chain.
+            // Stays AOT-clean by avoiding GetInterfaces().
             private static Type GetEnumerableElementType(Type t)
             {
                 if (t.IsArray) return t.GetElementType();
-                if (t.IsGenericType)
+                for (var c = t; c != null; c = c.BaseType)
                 {
-                    var def = t.GetGenericTypeDefinition();
+                    if (!c.IsGenericType) continue;
+                    var def = c.GetGenericTypeDefinition();
                     if (def == typeof(IEnumerable<>) || def == typeof(ICollection<>)
                         || def == typeof(IList<>) || def == typeof(IReadOnlyCollection<>)
                         || def == typeof(IReadOnlyList<>) || def == typeof(List<>)
                         || def == typeof(HashSet<>))
                     {
-                        return t.GetGenericArguments()[0];
+                        return c.GetGenericArguments()[0];
                     }
                 }
                 return null;
@@ -259,10 +264,21 @@ namespace OdataQueryLite.ExpressionBuilding
             {
                 ExpectArgs(node, 1);
                 var operand = Build(node.Args[0], typeof(DateTime));
-                var t = operand.Type;
-                if (Nullable.GetUnderlyingType(t) != null) t = Nullable.GetUnderlyingType(t);
-                if (t != typeof(DateTime) && t != typeof(DateTimeOffset))
+                var underlying = Nullable.GetUnderlyingType(operand.Type);
+                var effective = underlying ?? operand.Type;
+                if (effective != typeof(DateTime) && effective != typeof(DateTimeOffset))
                     throw new ArgumentException($"Date function expects DateTime/DateTimeOffset; got {operand.Type.Name}.");
+
+                // For nullable operands: `dt.HasValue ? (int?)dt.Value.Year : null` so null
+                // propagates per OData spec rather than throwing at row evaluation.
+                if (underlying != null)
+                {
+                    var hasValue = Expression.Property(operand, nameof(Nullable<int>.HasValue));
+                    var value = Expression.Property(operand, nameof(Nullable<int>.Value));
+                    var prop = Expression.Property(value, property);
+                    var lifted = Expression.Convert(prop, typeof(int?));
+                    return Expression.Condition(hasValue, lifted, Expression.Constant(null, typeof(int?)));
+                }
                 return Expression.Property(operand, property);
             }
 
@@ -270,9 +286,33 @@ namespace OdataQueryLite.ExpressionBuilding
             {
                 ExpectArgs(node, 1);
                 var operand = Build(node.Args[0], typeof(double));
-                var mi = typeof(Math).GetMethod(method, new[] { typeof(double) })
-                    ?? throw new InvalidOperationException($"Math.{method}(double) not found.");
-                return Expression.Call(mi, operand);
+                var underlying = Nullable.GetUnderlyingType(operand.Type);
+                var effective = underlying ?? operand.Type;
+
+                // Math has separate decimal / double overloads — dispatch on member type to
+                // avoid lossy double conversion for decimal columns (money fields, etc).
+                Type mathArg = effective == typeof(decimal) ? typeof(decimal)
+                    : effective == typeof(double) || effective == typeof(float) ? typeof(double)
+                    : throw new ArgumentException($"Math.{method} expects decimal / double / float; got {effective.Name}.");
+
+                var mi = typeof(Math).GetMethod(method, new[] { mathArg })
+                    ?? throw new InvalidOperationException($"Math.{method}({mathArg.Name}) not found.");
+
+                if (underlying != null)
+                {
+                    var hasValue = Expression.Property(operand, nameof(Nullable<int>.HasValue));
+                    var value = Expression.Property(operand, nameof(Nullable<int>.Value));
+                    Expression arg = value.Type == mathArg ? value : Expression.Convert(value, mathArg);
+                    var call = Expression.Call(mi, arg);
+                    var nullableMath = typeof(Nullable<>).MakeGenericType(mathArg);
+                    return Expression.Condition(
+                        hasValue,
+                        Expression.Convert(call, nullableMath),
+                        Expression.Constant(null, nullableMath));
+                }
+
+                Expression nonNullArg = operand.Type == mathArg ? operand : Expression.Convert(operand, mathArg);
+                return Expression.Call(mi, nonNullArg);
             }
 
             private static void ExpectArgs(FunctionNode node, int count)
@@ -319,6 +359,5 @@ namespace OdataQueryLite.ExpressionBuilding
                 }
             }
         }
-#pragma warning restore IL2026, IL2070, IL2072, IL3050
     }
 }
