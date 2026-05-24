@@ -1,11 +1,19 @@
 namespace OdataQueryLite
 {
-    public sealed class ApplyOptions
+    public interface IApplyOptions
     {
-        public bool Paging { get; private set; } = true;
-        public bool OrderBy { get; private set; } = true;
-        public bool SelectExpand { get; private set; } = true;
-        public bool Count { get; private set; } = true;
+        bool Paging { get; }
+        bool OrderBy { get; }
+        bool SelectExpand { get; }
+        bool Count { get; }
+    }
+
+    public sealed class ApplyOptions : IApplyOptions
+    {
+        public bool Paging { get; set; } = true;
+        public bool OrderBy { get; set; } = true;
+        public bool SelectExpand { get; set; } = true;
+        public bool Count { get; set; } = true;
 
         public ApplyOptions ApplyPaging(bool value) { Paging = value; return this; }
         public ApplyOptions ApplyOrderBy(bool value) { OrderBy = value; return this; }
