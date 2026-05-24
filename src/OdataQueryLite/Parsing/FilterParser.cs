@@ -7,9 +7,12 @@ namespace OdataQueryLite.Parsing
 {
     public static class FilterParser
     {
-        public static FilterParseResult Parse(string input)
+        public static FilterParseResult Parse(string input) => Parse(OdataLexer.Tokenize(input));
+
+        public static FilterParseResult Parse(LexedQuery lexed)
         {
-            var state = new ParserState(OdataLexer.Tokenize(input).Tokens);
+            ArgumentNullException.ThrowIfNull(lexed);
+            var state = new ParserState(lexed.Tokens);
             List<LiteralValue> literals = [];
             var node = ParseOr(state, literals);
             if (state.Peek().Kind != TokenKind.EOF)
@@ -83,7 +86,7 @@ namespace OdataQueryLite.Parsing
                     return EmitParam(literals, t.Text == "true", LiteralKind.Boolean);
                 case TokenKind.NullLiteral:
                     s.Consume();
-                    return new LiteralNode(null, LiteralKind.Null);
+                    return EmitParam(literals, null, LiteralKind.Null);
                 case TokenKind.DateTimeLiteral:
                     s.Consume();
                     return EmitParam(literals, ParseDate(t.Text, t.Position), LiteralKind.DateTime);

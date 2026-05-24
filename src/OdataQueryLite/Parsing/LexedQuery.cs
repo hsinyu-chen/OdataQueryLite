@@ -3,19 +3,25 @@ using System.Text;
 
 namespace OdataQueryLite.Parsing
 {
-    // Lexer output wrapper. Carries the token list plus the two debug/cache renderings:
-    //   ToString()       — verbatim re-render (string literals re-quoted, escapes restored).
-    //   ToShapeString()  — literals collapsed to type placeholders (?str / ?num / ?bool /
-    //                      ?date), used as part of the compiled-query cache key.
+    // Lexer output wrapper. Three renderings:
+    //   ToString()           — verbatim re-render (debug).
+    //   ToShapeString()      — typed placeholders (?str / ?num / ?bool / ?date / ?null);
+    //                          for debugging/inspection.
+    //   ToShapeString(typed=false) — single `?` placeholder for all literals; used as the
+    //                                compiled-query cache key so null doesn't fragment cache
+    //                                shape vs the same template called with non-null values.
     public sealed class LexedQuery(IReadOnlyList<Token> tokens)
     {
         public IReadOnlyList<Token> Tokens { get; } = tokens;
 
-        public override string ToString() => Render(verbatim: true);
+        public override string ToString() => Render(LiteralRenderMode.Verbatim);
 
-        public string ToShapeString() => Render(verbatim: false);
+        public string ToShapeString(bool typed = true) =>
+            Render(typed ? LiteralRenderMode.Typed : LiteralRenderMode.Untyped);
 
-        private string Render(bool verbatim)
+        private enum LiteralRenderMode { Verbatim, Typed, Untyped }
+
+        private string Render(LiteralRenderMode mode)
         {
             var sb = new StringBuilder();
             Token? prev = null;
@@ -23,7 +29,7 @@ namespace OdataQueryLite.Parsing
             {
                 if (t.Kind == TokenKind.EOF) break;
                 if (NeedsSpaceBetween(prev, t)) sb.Append(' ');
-                sb.Append(RenderToken(t, verbatim));
+                sb.Append(RenderToken(t, mode));
                 prev = t;
             }
             return sb.ToString();
@@ -33,12 +39,8 @@ namespace OdataQueryLite.Parsing
         {
             if (prev is null) return false;
             var p = prev.Value;
-            // Comma / semicolon / colon are list/clause separators — always followed by space.
             if (p.Kind is TokenKind.Comma or TokenKind.Semicolon or TokenKind.Colon) return true;
-            // Closing paren followed by a wordy token needs a separator: `(A eq 1) and B`.
-            // `))` and `),` stay compact.
             if (p.Kind == TokenKind.RParen && IsWordy(next.Kind)) return true;
-            // Adjacent wordy tokens need a separator (e.g. `Name eq ?str` not `Nameeq?str`).
             return IsWordy(p.Kind) && IsWordy(next.Kind);
         }
 
@@ -46,13 +48,18 @@ namespace OdataQueryLite.Parsing
             or TokenKind.StringLiteral or TokenKind.NumberLiteral
             or TokenKind.BoolLiteral or TokenKind.NullLiteral or TokenKind.DateTimeLiteral;
 
-        private static string RenderToken(Token t, bool verbatim) => t.Kind switch
+        private static string RenderToken(Token t, LiteralRenderMode mode) => t.Kind switch
         {
-            TokenKind.StringLiteral => verbatim ? $"'{t.Text.Replace("'", "''")}'" : "?str",
-            TokenKind.NumberLiteral => verbatim ? t.Text : "?num",
-            TokenKind.BoolLiteral => verbatim ? t.Text : "?bool",
-            TokenKind.DateTimeLiteral => verbatim ? t.Text : "?date",
-            TokenKind.NullLiteral => "null", // never parameterized — SQL semantics need IS NULL
+            TokenKind.StringLiteral => mode switch
+            {
+                LiteralRenderMode.Verbatim => $"'{t.Text.Replace("'", "''")}'",
+                LiteralRenderMode.Typed => "?str",
+                _ => "?"
+            },
+            TokenKind.NumberLiteral => mode == LiteralRenderMode.Verbatim ? t.Text : (mode == LiteralRenderMode.Typed ? "?num" : "?"),
+            TokenKind.BoolLiteral => mode == LiteralRenderMode.Verbatim ? t.Text : (mode == LiteralRenderMode.Typed ? "?bool" : "?"),
+            TokenKind.DateTimeLiteral => mode == LiteralRenderMode.Verbatim ? t.Text : (mode == LiteralRenderMode.Typed ? "?date" : "?"),
+            TokenKind.NullLiteral => mode == LiteralRenderMode.Verbatim ? "null" : (mode == LiteralRenderMode.Typed ? "?null" : "?"),
             _ => t.Text
         };
     }

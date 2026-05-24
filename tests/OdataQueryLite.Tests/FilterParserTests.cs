@@ -43,15 +43,18 @@ namespace OdataQueryLite.Tests
         }
 
         [Fact]
-        public void Null_compare_stays_literal_not_param()
+        public void Null_compare_is_parameterized_to_keep_cache_shape_stable()
         {
+            // Null goes through the literals list like every other value so that
+            // a query template doesn't fragment the cache by null vs non-null arg pattern.
             var r = FilterParser.Parse("Name ne null");
             var bin = Assert.IsType<BinaryNode>(r.Ast);
             Assert.Equal(BinaryOp.Ne, bin.Op);
-            var lit = Assert.IsType<LiteralNode>(bin.Right);
-            Assert.Equal(LiteralKind.Null, lit.Kind);
-            Assert.Null(lit.Value);
-            Assert.Empty(r.Literals);
+            var p = Assert.IsType<ParamRefNode>(bin.Right);
+            Assert.Equal(LiteralKind.Null, p.Kind);
+            Assert.Single(r.Literals);
+            Assert.Null(r.Literals[0].Value);
+            Assert.Equal(LiteralKind.Null, r.Literals[0].Kind);
         }
 
         [Fact]

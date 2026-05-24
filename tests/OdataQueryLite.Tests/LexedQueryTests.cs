@@ -30,9 +30,9 @@ namespace OdataQueryLite.Tests
         [InlineData("Name eq 'X'", "Name eq ?str")]
         [InlineData("Amount gt 100", "Amount gt ?num")]
         [InlineData("IsActive eq true", "IsActive eq ?bool")]
-        [InlineData("Name ne null", "Name ne null")] // null stays literal — SQL needs IS NULL semantics
+        [InlineData("Name ne null", "Name ne ?null")] // null parameterized so cache shape is stable
         [InlineData("CreatedTime gt 2024-01-01T00:00:00Z", "CreatedTime gt ?date")]
-        [InlineData("(A eq 1 or A eq 2) and B ne null", "(A eq ?num or A eq ?num) and B ne null")]
+        [InlineData("(A eq 1 or A eq 2) and B ne null", "(A eq ?num or A eq ?num) and B ne ?null")]
         public void Shape_collapses_literals_to_type_placeholders(string input, string expectedShape)
         {
             Assert.Equal(expectedShape, OdataLexer.Tokenize(input).ToShapeString());
@@ -45,6 +45,20 @@ namespace OdataQueryLite.Tests
             var a = OdataLexer.Tokenize("Status eq 'Active' and Amount gt 100").ToShapeString();
             var b = OdataLexer.Tokenize("Status eq 'Pending' and Amount gt 500").ToShapeString();
             Assert.Equal(a, b);
+        }
+
+        [Fact]
+        public void Untyped_shape_collapses_every_literal_to_a_single_placeholder()
+        {
+            // Cache key mode: null and non-null calls for the same query template hit the
+            // same entry. Stops O(2^N) fragmentation when a template has many slots that
+            // can each be null or not per request.
+            var withValue = OdataLexer.Tokenize("Name eq 'X' and Age gt 30").ToShapeString(typed: false);
+            var withNull = OdataLexer.Tokenize("Name eq null and Age gt 30").ToShapeString(typed: false);
+            var bothNull = OdataLexer.Tokenize("Name eq null and Age gt null").ToShapeString(typed: false);
+            Assert.Equal(withValue, withNull);
+            Assert.Equal(withValue, bothNull);
+            Assert.Equal("Name eq ? and Age gt ?", withValue);
         }
 
         [Fact]
