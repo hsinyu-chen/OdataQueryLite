@@ -12,22 +12,14 @@ namespace OdataQueryLite.Permissions
             ArgumentNullException.ThrowIfNull(lambda);
 
             List<PropertyInfo> path = [];
-            Walk(Unwrap(lambda.Body), path);
+            Walk(lambda.Body, path);
             path.Reverse();
             return path;
         }
 
-        // Strip Convert (object-cast) and Quote (IQueryable wraps lambdas in Quote) layers.
-        private static Expression Unwrap(Expression e)
-        {
-            while (e is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked or ExpressionType.Quote } u)
-                e = u.Operand;
-            return e;
-        }
-
         private static void Walk(Expression e, List<PropertyInfo> path)
         {
-            switch (Unwrap(e))
+            switch (e)
             {
                 case MemberExpression { Member: PropertyInfo pi } m:
                     path.Add(pi);
@@ -37,18 +29,12 @@ namespace OdataQueryLite.Permissions
                 case ParameterExpression:
                     return;
 
-                // x.Items.Select(i => i.Product) — descend into inner lambda then continue with source
-                // IQueryable.Select wraps the lambda in Quote, which Unwrap strips for us.
-                case MethodCallExpression { Method.Name: "Select" or "SelectMany", Arguments.Count: 2 } call:
-                    var inner = ExtractPath((LambdaExpression)Unwrap(call.Arguments[1]));
-                    for (int i = inner.Count - 1; i >= 0; i--) path.Add(inner[i]);
-                    Walk(call.Arguments[0], path);
-                    break;
-
                 default:
                     throw new ArgumentException(
-                        $"PropertyAccessVisitor: unsupported expression node '{e.NodeType}' ({e.GetType().Name}). " +
-                        "Supported shapes: MemberExpression chain (x => x.A.B.C), Select/SelectMany on collections.");
+                        $"AllowExpand selector must be a simple property-access chain (x => x.A.B.C). " +
+                        $"For collection navigations use the two-argument overload: " +
+                        $"AllowExpand(x => x.Items, n => n.AllowExpand(i => i.Field)). " +
+                        $"Got unsupported expression node '{e.NodeType}' ({e.GetType().Name}).");
             }
         }
     }

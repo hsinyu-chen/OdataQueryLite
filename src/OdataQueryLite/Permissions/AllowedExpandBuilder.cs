@@ -68,12 +68,31 @@ namespace OdataQueryLite.Permissions
             return child;
         }
 
-        // string / byte[] (OData Edm.Binary) / value type / Nullable<T> = scalar; everything else = navigation.
-        private static bool IsNavigation(Type t) =>
-            t != typeof(string)
-            && t != typeof(byte[])
-            && !t.IsValueType
-            && Nullable.GetUnderlyingType(t) == null;
+        // OData structural property (scalar) vs navigation:
+        // - string / value type / Nullable<T> are scalar.
+        // - Collections / arrays inherit from their element type (List<int> is scalar, ICollection<Customer> is navigation).
+        // - Everything else (reference types) is navigation.
+        private static bool IsNavigation(Type t)
+        {
+            var inner = Nullable.GetUnderlyingType(t) ?? t;
+            if (inner == typeof(string) || inner.IsValueType) return false;
+
+            var element = GetCollectionElementType(inner);
+            return element == null || IsNavigation(element);
+        }
+
+        private static Type GetCollectionElementType(Type t)
+        {
+            if (t.IsArray) return t.GetElementType();
+            foreach (var i in t.GetInterfaces())
+            {
+                if (i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+                    return i.GetGenericArguments()[0];
+            }
+            if (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+                return t.GetGenericArguments()[0];
+            return null;
+        }
 
         private static void EnsureNonEmpty(IReadOnlyList<PropertyInfo> path)
         {

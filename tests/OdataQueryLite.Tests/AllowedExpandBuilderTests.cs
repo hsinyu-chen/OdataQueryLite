@@ -12,6 +12,8 @@ namespace OdataQueryLite.Tests
             public string Name { get; set; }
             public decimal Price { get; set; }
             public byte[] Photo { get; set; }
+            public List<int> Ratings { get; set; }
+            public string[] Tags { get; set; }
         }
         private sealed class Order
         {
@@ -134,6 +136,23 @@ namespace OdataQueryLite.Tests
             var product = node.ExpandableProperties["LatestOrder"].ExpandableProperties["Product"];
             Assert.Contains("Photo", product.AllowedSelectFields);
             Assert.False(product.ExpandableProperties.ContainsKey("Photo"));
+        }
+
+        [Fact]
+        public void Collection_of_primitive_is_treated_as_scalar_select_field()
+        {
+            // Regression: List<int> / string[] are structural properties (OData $select),
+            // not navigations — they must not turn into ExpandableProperties nodes.
+            var node = new AllowedExpandBuilder<Customer>()
+                .AllowExpand(x => x.LatestOrder.Product.Ratings)
+                .AllowExpand(x => x.LatestOrder.Product.Tags)
+                .Build();
+
+            var product = node.ExpandableProperties["LatestOrder"].ExpandableProperties["Product"];
+            Assert.Contains("Ratings", product.AllowedSelectFields);
+            Assert.Contains("Tags", product.AllowedSelectFields);
+            Assert.False(product.ExpandableProperties.ContainsKey("Ratings"));
+            Assert.False(product.ExpandableProperties.ContainsKey("Tags"));
         }
     }
 }
