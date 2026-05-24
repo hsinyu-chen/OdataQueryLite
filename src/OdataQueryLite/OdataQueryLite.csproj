@@ -6,6 +6,7 @@
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <IsAotCompatible>true</IsAotCompatible>
     <PackageId>OdataQueryLite</PackageId>
     <Version>0.1.0-alpha</Version>
     <Authors>HsinYu Chen</Authors>

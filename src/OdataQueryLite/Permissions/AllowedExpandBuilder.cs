@@ -81,16 +81,24 @@ namespace OdataQueryLite.Permissions
             return element == null || IsNavigation(element);
         }
 
+        // Detect element type without GetInterfaces() — covers arrays and the common BCL collection
+        // generic definitions used by EF Core navigation collections. AOT-clean (no member discovery).
+        // Custom collection types that don't inherit from a recognised generic def fall through to
+        // null → treated as navigation; register them via the explicit collection overload instead.
         private static Type GetCollectionElementType(Type t)
         {
             if (t.IsArray) return t.GetElementType();
-            foreach (var i in t.GetInterfaces())
+            if (t.IsGenericType)
             {
-                if (i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>))
-                    return i.GetGenericArguments()[0];
+                var def = t.GetGenericTypeDefinition();
+                if (def == typeof(IEnumerable<>) || def == typeof(ICollection<>)
+                    || def == typeof(IList<>) || def == typeof(IReadOnlyCollection<>)
+                    || def == typeof(IReadOnlyList<>) || def == typeof(List<>)
+                    || def == typeof(HashSet<>))
+                {
+                    return t.GetGenericArguments()[0];
+                }
             }
-            if (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(IEnumerable<>))
-                return t.GetGenericArguments()[0];
             return null;
         }
 
