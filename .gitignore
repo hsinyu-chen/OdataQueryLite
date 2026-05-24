@@ -1,0 +1,27 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# Build output
+out/
+artifacts/
+*.nupkg
+*.snupkg
+
+# Test coverage
+TestResults/
+coverage.opencover.xml
+*.coverage
+*.coveragexml
+
+# Rider / VSCode
+.idea/
+.vscode/
+*.DotSettings.user
+
+# OS
+Thumbs.db
+.DS_Store

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <PackageId>OdataQueryLite</PackageId>
+    <Version>0.1.0-alpha</Version>
+    <Authors>HsinYu Chen</Authors>
+    <Description>Lightweight OData v4 query options parser ($filter / $orderby / $expand / $select) with no Microsoft.AspNetCore.OData dependency.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/hsinyu-chen/OdataQueryLite</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/hsinyu-chen/OdataQueryLite</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>odata;query;parser;filter;expression</PackageTags>
+  </PropertyGroup>
+
+</Project>
