@@ -65,5 +65,34 @@ namespace OdataQueryLite.Tests
             Expression<System.Func<Customer, string>> sel = c => c.Orders.First().Product.Name;
             Assert.Throws<System.ArgumentException>(() => PropertyAccessVisitor.ExtractPath(sel));
         }
+
+        private sealed class Invoice { public IQueryable<Order> Items { get; set; } }
+
+        [Fact]
+        public void ExtractPath_handles_Quote_wrapped_lambda_from_Queryable_Select()
+        {
+            // Items typed as IQueryable<T> binds Select to Queryable.Select which emits Quote(lambda)
+            // around the inner selector — Unwrap must strip Quote (regression).
+            Expression<System.Func<Invoice, IQueryable<string>>> sel =
+                i => i.Items.Select(o => o.Product.Name);
+            var path = PropertyAccessVisitor.ExtractPath(sel);
+            Assert.Equal(new[] { "Items", "Product", "Name" }, path.Select(p => p.Name).ToArray());
+        }
+
+        [Fact]
+        public void ExtractPath_handles_multiple_Convert_layers()
+        {
+            // (int)(object)c.LatestOrder.Id — Unwrap must strip both Convert layers.
+            var param = Expression.Parameter(typeof(Customer), "c");
+            var idAccess = Expression.Property(
+                Expression.Property(param, nameof(Customer.LatestOrder)),
+                nameof(Order.Id));
+            var lambda = Expression.Lambda(
+                Expression.Convert(Expression.Convert(idAccess, typeof(object)), typeof(int)),
+                param);
+
+            var path = PropertyAccessVisitor.ExtractPath(lambda);
+            Assert.Equal(new[] { "LatestOrder", "Id" }, path.Select(p => p.Name).ToArray());
+        }
     }
 }

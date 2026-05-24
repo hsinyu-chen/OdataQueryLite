@@ -17,12 +17,17 @@ namespace OdataQueryLite.Permissions
             return path;
         }
 
-        private static Expression Unwrap(Expression e) =>
-            e is UnaryExpression { NodeType: ExpressionType.Convert } u ? u.Operand : e;
+        // Strip Convert (object-cast) and Quote (IQueryable wraps lambdas in Quote) layers.
+        private static Expression Unwrap(Expression e)
+        {
+            while (e is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked or ExpressionType.Quote } u)
+                e = u.Operand;
+            return e;
+        }
 
         private static void Walk(Expression e, List<PropertyInfo> path)
         {
-            switch (e)
+            switch (Unwrap(e))
             {
                 case MemberExpression { Member: PropertyInfo pi } m:
                     path.Add(pi);
@@ -33,6 +38,7 @@ namespace OdataQueryLite.Permissions
                     return;
 
                 // x.Items.Select(i => i.Product) — descend into inner lambda then continue with source
+                // IQueryable.Select wraps the lambda in Quote, which Unwrap strips for us.
                 case MethodCallExpression { Method.Name: "Select" or "SelectMany", Arguments.Count: 2 } call:
                     var inner = ExtractPath((LambdaExpression)Unwrap(call.Arguments[1]));
                     for (int i = inner.Count - 1; i >= 0; i--) path.Add(inner[i]);

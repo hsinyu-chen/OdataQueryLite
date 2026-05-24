@@ -11,9 +11,11 @@ namespace OdataQueryLite.Permissions
             ArgumentNullException.ThrowIfNull(request);
             ArgumentNullException.ThrowIfNull(allowed);
 
-            if (request.SelectedFields != null
-                && allowed.AllowedSelectFields != null
-                && !request.SelectedFields.IsSubsetOf(allowed.AllowedSelectFields))
+            // Restricted allowed side: request MUST $select (null $select means "give me everything",
+            // which would bypass the whitelist) AND the requested fields must be a subset of allowed.
+            if (allowed.AllowedSelectFields != null
+                && (request.SelectedFields == null
+                    || !request.SelectedFields.IsSubsetOf(allowed.AllowedSelectFields)))
             {
                 return false;
             }

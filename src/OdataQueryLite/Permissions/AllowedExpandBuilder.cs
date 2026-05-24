@@ -14,7 +14,18 @@ namespace OdataQueryLite.Permissions
             ArgumentNullException.ThrowIfNull(selector);
             var path = PropertyAccessVisitor.ExtractPath(selector);
             EnsureNonEmpty(path);
-            AddSinglePath(_root, path);
+
+            var cursor = Navigate(_root, path, 0, path.Count - 1);
+            var leaf = path[^1];
+            if (IsNavigation(leaf.PropertyType))
+            {
+                var leafNode = GetOrAddChild(cursor, leaf.Name);
+                leafNode.MarkSelectUnrestricted();
+            }
+            else
+            {
+                cursor.AddAllowedSelect(leaf.Name);
+            }
             return this;
         }
 
@@ -27,42 +38,22 @@ namespace OdataQueryLite.Permissions
 
             var path = PropertyAccessVisitor.ExtractPath(collectionSelector);
             EnsureNonEmpty(path);
-            var collectionNode = NavigateOrCreate(_root, path);
+            var collectionNode = Navigate(_root, path, 0, path.Count);
 
             var childBuilder = new AllowedExpandBuilder<TChild>();
             configureChild(childBuilder);
-            MergeInto(collectionNode, childBuilder._root);
+            collectionNode.MergeFrom(childBuilder._root);
             return this;
         }
 
         public AllowedExpandNode Build() => _root;
 
-        private static void AddSinglePath(AllowedExpandNode start, IReadOnlyList<PropertyInfo> path)
+        private static AllowedExpandNode Navigate(AllowedExpandNode start, IReadOnlyList<PropertyInfo> path, int from, int toExclusive)
         {
             var cursor = start;
-            for (int i = 0; i < path.Count - 1; i++)
+            for (int i = from; i < toExclusive; i++)
             {
                 cursor = GetOrAddChild(cursor, path[i].Name);
-            }
-
-            var leaf = path[^1];
-            if (IsNavigation(leaf.PropertyType))
-            {
-                GetOrAddChild(cursor, leaf.Name);
-            }
-            else
-            {
-                cursor.AllowedSelectFields ??= [];
-                cursor.AllowedSelectFields.Add(leaf.Name);
-            }
-        }
-
-        private static AllowedExpandNode NavigateOrCreate(AllowedExpandNode start, IReadOnlyList<PropertyInfo> path)
-        {
-            var cursor = start;
-            foreach (var pi in path)
-            {
-                cursor = GetOrAddChild(cursor, pi.Name);
             }
             return cursor;
         }
@@ -77,23 +68,10 @@ namespace OdataQueryLite.Permissions
             return child;
         }
 
-        private static void MergeInto(AllowedExpandNode dest, AllowedExpandNode src)
-        {
-            foreach (var (name, srcChild) in src.ExpandableProperties)
-            {
-                var destChild = GetOrAddChild(dest, name);
-                MergeInto(destChild, srcChild);
-            }
-            if (src.AllowedSelectFields != null)
-            {
-                dest.AllowedSelectFields ??= [];
-                foreach (var f in src.AllowedSelectFields) dest.AllowedSelectFields.Add(f);
-            }
-        }
-
-        // string / value type / Nullable<T> = scalar; everything else = navigation
+        // string / byte[] (OData Edm.Binary) / value type / Nullable<T> = scalar; everything else = navigation.
         private static bool IsNavigation(Type t) =>
             t != typeof(string)
+            && t != typeof(byte[])
             && !t.IsValueType
             && Nullable.GetUnderlyingType(t) == null;
 

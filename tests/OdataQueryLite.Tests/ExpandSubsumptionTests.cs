@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+using System.Linq;
 using OdataQueryLite.Ast;
 using OdataQueryLite.Permissions;
 using Xunit;
@@ -47,7 +47,8 @@ namespace OdataQueryLite.Tests
         public void Request_selecting_field_outside_allowed_select_is_rejected()
         {
             var request = new ExpandRequestNode { SelectedFields = ["Email"] };
-            var allowed = new AllowedExpandNode { AllowedSelectFields = ["Name"] };
+            var allowed = new AllowedExpandNode();
+            allowed.AddAllowedSelect("Name");
             Assert.False(ExpandSubsumption.IsAllowed(request, allowed));
         }
 
@@ -55,15 +56,17 @@ namespace OdataQueryLite.Tests
         public void Request_select_against_unrestricted_allowed_is_allowed()
         {
             var request = new ExpandRequestNode { SelectedFields = ["Email", "Phone"] };
-            var allowed = new AllowedExpandNode(); // AllowedSelectFields = null → unrestricted
+            var allowed = new AllowedExpandNode(); // AllowedSelectFields == null → unrestricted
             Assert.True(ExpandSubsumption.IsAllowed(request, allowed));
         }
 
         [Fact]
         public void Nested_select_violation_rejects_whole_tree()
         {
+            var nestedAllowed = new AllowedExpandNode();
+            nestedAllowed.AddAllowedSelect("Name");
             var request = Req(("Customer", new ExpandRequestNode { SelectedFields = ["Salary"] }));
-            var allowed = Allow(("Customer", new AllowedExpandNode { AllowedSelectFields = ["Name"] }));
+            var allowed = Allow(("Customer", nestedAllowed));
             Assert.False(ExpandSubsumption.IsAllowed(request, allowed));
         }
 
@@ -71,8 +74,21 @@ namespace OdataQueryLite.Tests
         public void Select_subset_is_allowed()
         {
             var request = new ExpandRequestNode { SelectedFields = ["Name"] };
-            var allowed = new AllowedExpandNode { AllowedSelectFields = ["Name", "Email"] };
+            var allowed = new AllowedExpandNode();
+            allowed.AddAllowedSelect("Name");
+            allowed.AddAllowedSelect("Email");
             Assert.True(ExpandSubsumption.IsAllowed(request, allowed));
+        }
+
+        [Fact]
+        public void Request_without_select_against_restricted_allowed_is_rejected()
+        {
+            // Regression: previously the missing $select bypassed the whitelist entirely,
+            // returning every field while the whitelist intended to restrict to {"Name"}.
+            var request = new ExpandRequestNode(); // SelectedFields == null
+            var allowed = new AllowedExpandNode();
+            allowed.AddAllowedSelect("Name");
+            Assert.False(ExpandSubsumption.IsAllowed(request, allowed));
         }
     }
 }
