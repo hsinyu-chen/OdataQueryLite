@@ -405,6 +405,19 @@ namespace OdataQueryLite.Tests
         }
 
         [Fact]
+        public void Literal_eq_literal_uses_value_equality()
+        {
+            // Dynamic-builder `WHERE 1 = 1 AND …` idiom: both operands are ParamRef literals.
+            // Without an explicit slot, both lift to typeof(object) and equality runs on the
+            // boxed primitives, returning false for identical values in-memory.
+            Assert.True(Compile<Customer>("1 eq 1").Match(new Customer()));
+            Assert.False(Compile<Customer>("1 eq 2").Match(new Customer()));
+            Assert.True(Compile<Customer>("'a' eq 'a'").Match(new Customer()));
+            Assert.True(Compile<Customer>("true eq true").Match(new Customer()));
+            Assert.True(Compile<Customer>("1 eq 1 and Name eq 'Alice'").Match(new Customer { Name = "Alice" }));
+        }
+
+        [Fact]
         public void Substring_numeric_args_keep_nullable_slot_invariant()
         {
             // Numeric arg slots stay nullable per the engine-wide invariant — a packed null

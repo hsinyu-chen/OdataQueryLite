@@ -86,6 +86,13 @@ namespace OdataQueryLite.ExpressionBuilding
                 // `Items/any() eq false` fall through to typeof(object), box the bool, and
                 // do reference equality instead of value equality.
                 BinaryNode or UnaryNode or LambdaCollectionNode => typeof(bool?),
+                // Literal-vs-literal (e.g. dynamic-builder `1 eq 1 and …`) — without these,
+                // both sides slot to typeof(object) and EmitCompare does reference equality
+                // on boxed primitives, returning false for identical values in-memory.
+                ParamRefNode { Kind: LiteralKind.Number } => typeof(decimal?),
+                ParamRefNode { Kind: LiteralKind.Boolean } => typeof(bool?),
+                ParamRefNode { Kind: LiteralKind.DateTime } => typeof(DateTimeOffset?),
+                ParamRefNode { Kind: LiteralKind.String } => typeof(string),
                 _ => null
             };
 
