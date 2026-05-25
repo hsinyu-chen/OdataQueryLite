@@ -139,7 +139,7 @@ namespace OdataQueryLite.ExpressionBuilding
                             throw new ArgumentException($"$count must be the terminal segment; saw '{string.Join('/', path)}'.");
                         var elem = GetEnumerableElementType(cursor.Type)
                             ?? throw new ArgumentException($"$count target is not enumerable: {cursor.Type.Name}");
-                        cursor = Expression.Call(typeof(Enumerable), nameof(Enumerable.Count), new[] { elem }, cursor);
+                        cursor = Expression.Call(typeof(Enumerable), nameof(Enumerable.Count), [elem], cursor);
                         return cursor;
                     }
                     var prop = ResolveProperty(cursor.Type, seg);
@@ -223,7 +223,7 @@ namespace OdataQueryLite.ExpressionBuilding
                 ExpectArgs(node, 2);
                 var instance = Build(node.Args[0], typeof(string));
                 var arg = Build(node.Args[1], typeof(string));
-                var mi = typeof(string).GetMethod(method, new[] { typeof(string) })
+                var mi = typeof(string).GetMethod(method, [typeof(string)])
                     ?? throw new InvalidOperationException($"string.{method}(string) not found.");
                 return GuardStringNull(instance, Expression.Call(instance, mi, arg), Expression.Constant(false));
             }
@@ -233,7 +233,7 @@ namespace OdataQueryLite.ExpressionBuilding
                 ExpectArgs(node, 2);
                 var instance = Build(node.Args[0], typeof(string));
                 var arg = Build(node.Args[1], typeof(string));
-                var mi = typeof(string).GetMethod(nameof(string.IndexOf), new[] { typeof(string) })
+                var mi = typeof(string).GetMethod(nameof(string.IndexOf), [typeof(string)])
                     ?? throw new InvalidOperationException("string.IndexOf(string) not found.");
                 // IndexOf returns int — lift to int? so the null-guard's true/false branches match
                 // and so callers comparing the result use the nullable slot type.
@@ -268,11 +268,11 @@ namespace OdataQueryLite.ExpressionBuilding
                 var startVal = UnwrapNullableInt(Build(node.Args[1], TypeCoercion.SlotTypeFor(typeof(int))));
                 Expression call;
                 if (node.Args.Count == 2)
-                    call = Expression.Call(instance, typeof(string).GetMethod(nameof(string.Substring), new[] { typeof(int) }), startVal);
+                    call = Expression.Call(instance, typeof(string).GetMethod(nameof(string.Substring), [typeof(int)]), startVal);
                 else
                 {
                     var lenVal = UnwrapNullableInt(Build(node.Args[2], TypeCoercion.SlotTypeFor(typeof(int))));
-                    call = Expression.Call(instance, typeof(string).GetMethod(nameof(string.Substring), new[] { typeof(int), typeof(int) }), startVal, lenVal);
+                    call = Expression.Call(instance, typeof(string).GetMethod(nameof(string.Substring), [typeof(int), typeof(int)]), startVal, lenVal);
                 }
                 return GuardStringNull(instance, call, Expression.Constant(null, typeof(string)));
             }
@@ -285,7 +285,7 @@ namespace OdataQueryLite.ExpressionBuilding
                 ExpectArgs(node, 2);
                 var a = Build(node.Args[0], typeof(string));
                 var b = Build(node.Args[1], typeof(string));
-                var mi = typeof(string).GetMethod(nameof(string.Concat), new[] { typeof(string), typeof(string) });
+                var mi = typeof(string).GetMethod(nameof(string.Concat), [typeof(string), typeof(string)]);
                 var concat = Expression.Call(mi, a, b);
                 var anyNull = Expression.OrElse(
                     Expression.Equal(a, Expression.Constant(null, typeof(string))),
@@ -320,7 +320,7 @@ namespace OdataQueryLite.ExpressionBuilding
                     : effective == typeof(double) || effective == typeof(float) ? typeof(double)
                     : throw new ArgumentException($"Math.{method} expects decimal / double / float; got {effective.Name}.");
 
-                var mi = typeof(Math).GetMethod(method, new[] { mathArg })
+                var mi = typeof(Math).GetMethod(method, [mathArg])
                     ?? throw new InvalidOperationException($"Math.{method}({mathArg.Name}) not found.");
 
                 if (underlying != null)
@@ -374,7 +374,7 @@ namespace OdataQueryLite.ExpressionBuilding
                 if (node.Body == null)
                 {
                     // Items/any() — terminal collection-non-empty check.
-                    return Expression.Call(typeof(Enumerable), nameof(Enumerable.Any), new[] { elem }, collection);
+                    return Expression.Call(typeof(Enumerable), nameof(Enumerable.Any), [elem], collection);
                 }
 
                 var lambdaParam = Expression.Parameter(elem, node.Param);
@@ -384,7 +384,7 @@ namespace OdataQueryLite.ExpressionBuilding
                     var body = Build(node.Body, typeof(bool));
                     var lambda = Expression.Lambda(body, lambdaParam);
                     var method = node.Op == LambdaOp.Any ? nameof(Enumerable.Any) : nameof(Enumerable.All);
-                    return Expression.Call(typeof(Enumerable), method, new[] { elem }, collection, lambda);
+                    return Expression.Call(typeof(Enumerable), method, [elem], collection, lambda);
                 }
                 finally
                 {
