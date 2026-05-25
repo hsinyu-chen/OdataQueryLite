@@ -38,21 +38,7 @@ namespace OdataQueryLite.ExpressionBuilding
         private static (LambdaExpression Lambda, Type KeyType) BuildKeySelector<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] T>(MemberNode member)
         {
             var param = Expression.Parameter(typeof(T), "x");
-            Expression body = param;
-            for (int i = 0; i < member.Path.Count; i++)
-            {
-                var segment = member.Path[i];
-                if (segment == "$count")
-                {
-                    if (i != member.Path.Count - 1)
-                        throw new OdataQueryException($"$count must be the terminal segment; saw '{string.Join('/', member.Path)}'.");
-                    var elem = MemberPathResolver.GetEnumerableElementType(body.Type)
-                        ?? throw new OdataQueryException($"$count target is not enumerable: {body.Type.Name}");
-                    body = Expression.Call(typeof(Enumerable), nameof(Enumerable.Count), [elem], body);
-                    break;
-                }
-                body = Expression.Property(body, MemberPathResolver.ResolveProperty(body.Type, segment));
-            }
+            var body = MemberPathResolver.WalkPath(param, member.Path);
             var lambdaType = typeof(Func<,>).MakeGenericType(typeof(T), body.Type);
             return (Expression.Lambda(lambdaType, body, param), body.Type);
         }

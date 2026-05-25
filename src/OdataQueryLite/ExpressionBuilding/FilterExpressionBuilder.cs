@@ -184,22 +184,7 @@ namespace OdataQueryLite.ExpressionBuilding
                     }
                 }
 
-                var cursor = head;
-                for (int i = start; i < path.Count; i++)
-                {
-                    var seg = path[i];
-                    if (seg == "$count")
-                    {
-                        if (i != path.Count - 1)
-                            throw new OdataQueryException($"$count must be the terminal segment; saw '{string.Join('/', path)}'.");
-                        var elem = MemberPathResolver.GetEnumerableElementType(cursor.Type)
-                            ?? throw new OdataQueryException($"$count target is not enumerable: {cursor.Type.Name}");
-                        cursor = Expression.Call(typeof(Enumerable), nameof(Enumerable.Count), [elem], cursor);
-                        return cursor;
-                    }
-                    cursor = Expression.Property(cursor, MemberPathResolver.ResolveProperty(cursor.Type, seg));
-                }
-                return cursor;
+                return MemberPathResolver.WalkPath(head, path, start);
             }
 
             private Expression BuildFunction(FunctionNode node)

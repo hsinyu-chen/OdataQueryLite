@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Reflection;
 
 namespace OdataQueryLite.ExpressionBuilding
@@ -34,6 +35,31 @@ namespace OdataQueryLite.ExpressionBuilding
                     return iface.GetGenericArguments()[0];
             }
             return null;
+        }
+
+        // Walks `path[startIndex..]` from `root`, dereferencing each segment as a public
+        // property and translating a terminal `$count` segment into Enumerable.Count<T>().
+        // Identical semantics + error messages from $filter and $orderby — the whole point
+        // of this helper class.
+        [RequiresUnreferencedCode("Resolves T's members by name; T's properties must be preserved by the trimmer.")]
+        [RequiresDynamicCode("Builds Expression.Call to generic Enumerable.Count<T> at runtime for $count terminal segments.")]
+        public static Expression WalkPath(Expression root, IReadOnlyList<string> path, int startIndex = 0)
+        {
+            var cursor = root;
+            for (int i = startIndex; i < path.Count; i++)
+            {
+                var seg = path[i];
+                if (seg == "$count")
+                {
+                    if (i != path.Count - 1)
+                        throw new OdataQueryException($"$count must be the terminal segment; saw '{string.Join('/', path)}'.");
+                    var elem = GetEnumerableElementType(cursor.Type)
+                        ?? throw new OdataQueryException($"$count target is not enumerable: {cursor.Type.Name}");
+                    return Expression.Call(typeof(Enumerable), nameof(Enumerable.Count), [elem], cursor);
+                }
+                cursor = Expression.Property(cursor, ResolveProperty(cursor.Type, seg));
+            }
+            return cursor;
         }
 
         public static PropertyInfo ResolveProperty(
