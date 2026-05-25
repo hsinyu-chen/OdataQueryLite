@@ -54,13 +54,17 @@ namespace OdataQueryLite.Caching
                     throw new ArgumentException(
                         $"Literal count {literals.Count} does not match cached shape's slot count {_slotTypes.Length}.");
 
-                var args = _slotTypes.Length == 0 ? Array.Empty<object>() : new object[_slotTypes.Length];
+                // No literals — _body holds no references to _argsParam, so we can skip the
+                // ArgsSubstitutor traversal entirely and reuse _body as the lambda body.
+                if (_slotTypes.Length == 0)
+                    return source.Where(Expression.Lambda<Func<T, bool>>(_body, _entityParam));
+
+                var args = new object[_slotTypes.Length];
                 for (int i = 0; i < _slotTypes.Length; i++)
                     args[i] = TypeCoercion.Coerce(literals[i].Value, literals[i].Kind, _slotTypes[i]);
 
                 var bound = new ArgsSubstitutor(_argsParam, args).Visit(_body);
-                var lambda = Expression.Lambda<Func<T, bool>>(bound, _entityParam);
-                return source.Where(lambda);
+                return source.Where(Expression.Lambda<Func<T, bool>>(bound, _entityParam));
             }
         }
 
