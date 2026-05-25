@@ -455,6 +455,20 @@ namespace OdataQueryLite.Tests
         }
 
         [Fact]
+        public void Null_literal_in_logical_context_does_not_NRE()
+        {
+            // Filters that mention `null` in a boolean context (top-level, And/Or operand,
+            // lambda body, Not operand) used to NRE: ParamRef(Null) at expectedType=bool
+            // would unbox a null arg into the non-nullable Convert site. With bool? slots
+            // and CoerceToBool collapse at each boundary, all five surfaces silently false.
+            Assert.False(Compile<Customer>("IsActive and null").Match(new Customer { IsActive = true }));
+            Assert.False(Compile<Customer>("IsActive or null").Match(new Customer { IsActive = null }));
+            Assert.False(Compile<Customer>("not null").Match(new Customer()));
+            Assert.False(Compile<Customer>("null").Match(new Customer()));
+            Assert.False(Compile<Account>("Subscriptions/any(s: null)").Match(new Account { Subscriptions = new List<Subscription> { new() { Active = true } } }));
+        }
+
+        [Fact]
         public void Lambda_any_body_collapses_nullable_bool_to_bool_for_func_signature()
         {
             // Without CoerceToBool on the lambda body, `Subscriptions/any(s: s/Active)`

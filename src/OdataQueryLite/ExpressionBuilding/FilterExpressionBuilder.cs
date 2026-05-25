@@ -31,9 +31,11 @@ namespace OdataQueryLite.ExpressionBuilding
                 throw new ArgumentException($"argsParam type {argsParam.Type} must be object[].", nameof(argsParam));
 
             var ctx = new BuildContext(entityParam, argsParam, parsed.Literals);
-            var body = ctx.Build(parsed.Ast, expectedType: typeof(bool));
-            // bool? body (e.g. bare nullable-bool member or lifted comparison) collapses to
-            // bool via the shared CoerceToBool helper so this matches the AndAlso/OrElse path.
+            // expectedType=bool? so a ParamRef(Null) anywhere in the filter (e.g. \`filter=null\`
+            // or \`IsActive and null\`) records a nullable slot and avoids unboxing null into a
+            // non-nullable Convert at runtime. CoerceToBool then collapses to bool for the
+            // outer Func<T,bool> signature.
+            var body = ctx.Build(parsed.Ast, expectedType: typeof(bool?));
             if (body.Type == typeof(bool?))
                 body = BuildContext.CoerceToBool(body);
             else if (body.Type != typeof(bool))
@@ -59,7 +61,9 @@ namespace OdataQueryLite.ExpressionBuilding
             public Expression Build(FilterNode node, Type expectedType) => node switch
             {
                 BinaryNode b => BuildBinary(b),
-                UnaryNode u => Expression.Not(Build(u.Operand, typeof(bool))),
+                // Build with bool? then collapse: Not(null) = null (lifted) → CoerceToBool
+                // collapses to false at the outer boundary per OData v4 null-comparison rule.
+                UnaryNode u => CoerceToBool(Expression.Not(Build(u.Operand, typeof(bool?)))),
                 FunctionNode f => BuildFunction(f),
                 MemberNode m => BuildMember(m.Path),
                 ParamRefNode p => RecordAndAccess(p.Index, expectedType),
@@ -78,8 +82,8 @@ namespace OdataQueryLite.ExpressionBuilding
 
             private BinaryExpression BuildBinary(BinaryNode node)
             {
-                if (node.Op == BinaryOp.And) return Expression.AndAlso(CoerceToBool(Build(node.Left, typeof(bool))), CoerceToBool(Build(node.Right, typeof(bool))));
-                if (node.Op == BinaryOp.Or) return Expression.OrElse(CoerceToBool(Build(node.Left, typeof(bool))), CoerceToBool(Build(node.Right, typeof(bool))));
+                if (node.Op == BinaryOp.And) return Expression.AndAlso(CoerceToBool(Build(node.Left, typeof(bool?))), CoerceToBool(Build(node.Right, typeof(bool?))));
+                if (node.Op == BinaryOp.Or) return Expression.OrElse(CoerceToBool(Build(node.Left, typeof(bool?))), CoerceToBool(Build(node.Right, typeof(bool?))));
 
                 // Pre-build MemberNode operands so the BuildMember reflection walk runs once
                 // per side. Other node kinds resolve their slot type without expression work.
@@ -454,9 +458,9 @@ namespace OdataQueryLite.ExpressionBuilding
                 _lambdaScopes.Push((node.Param, lambdaParam));
                 try
                 {
-                    // any/all expect Func<T,bool> — collapse bool? bodies (nullable-bool
-                    // member, lifted comparison) so Enumerable.Any/All binds correctly.
-                    var body = CoerceToBool(Build(node.Body, typeof(bool)));
+                    // any/all expect Func<T,bool> — build with bool? so a ParamRef(Null) body
+                    // doesn't NRE on Convert, then CoerceToBool collapses for the Func signature.
+                    var body = CoerceToBool(Build(node.Body, typeof(bool?)));
                     var lambda = Expression.Lambda(body, lambdaParam);
                     var method = node.Op == LambdaOp.Any ? nameof(Enumerable.Any) : nameof(Enumerable.All);
                     return Expression.Call(typeof(Enumerable), method, [elem], collection, lambda);
