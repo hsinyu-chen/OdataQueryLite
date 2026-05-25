@@ -121,18 +121,18 @@ namespace OdataQueryLite.ExpressionBuilding
             {
                 if (path.Count == 0) throw new ArgumentException("Member path is empty.");
 
-                // Detect lambda-scope variable (any/all bound parameter).
-                Expression head;
-                int start;
-                if (_lambdaScopes.Count > 0 && path[0] == _lambdaScopes.Peek().Name)
+                // Walk the lambda-scope stack innermost-first so nested any/all can shadow and
+                // reference outer scopes — e.g. Orders/any(o: o/Items/any(i: i/Price gt o/Min)).
+                Expression head = _entity;
+                int start = 0;
+                foreach (var (name, param) in _lambdaScopes)
                 {
-                    head = _lambdaScopes.Peek().Param;
-                    start = 1;
-                }
-                else
-                {
-                    head = _entity;
-                    start = 0;
+                    if (path[0] == name)
+                    {
+                        head = param;
+                        start = 1;
+                        break;
+                    }
                 }
 
                 var cursor = head;
@@ -175,10 +175,11 @@ namespace OdataQueryLite.ExpressionBuilding
                 {
                     if (!c.IsGenericType) continue;
                     var def = c.GetGenericTypeDefinition();
-                    if (def == typeof(IEnumerable<>) || def == typeof(ICollection<>)
-                        || def == typeof(IList<>) || def == typeof(IReadOnlyCollection<>)
-                        || def == typeof(IReadOnlyList<>) || def == typeof(List<>)
-                        || def == typeof(HashSet<>))
+                    if (def == typeof(IEnumerable<>) || def == typeof(IQueryable<>)
+                        || def == typeof(ICollection<>) || def == typeof(IList<>)
+                        || def == typeof(IReadOnlyCollection<>) || def == typeof(IReadOnlyList<>)
+                        || def == typeof(ISet<>) || def == typeof(IReadOnlySet<>)
+                        || def == typeof(List<>) || def == typeof(HashSet<>))
                     {
                         return c.GetGenericArguments()[0];
                     }
@@ -213,6 +214,16 @@ namespace OdataQueryLite.ExpressionBuilding
                 };
             }
 
+            // String instance method on a null member would NRE during JIT in-memory execution;
+            // EF Core SQL handles null gracefully, but the OData spec also says functions
+            // return null when any arg is null. We collapse to the type-appropriate "no match"
+            // sentinel: false for bool methods, null for string/int methods (lifted to nullable).
+            private static Expression GuardStringNull(Expression instance, Expression nonNullResult, Expression nullResult) =>
+                Expression.Condition(
+                    Expression.Equal(instance, Expression.Constant(null, typeof(string))),
+                    nullResult,
+                    nonNullResult);
+
             private Expression StringMethodCall(FunctionNode node, string method, Type argType)
             {
                 ExpectArgs(node, 2);
@@ -220,7 +231,7 @@ namespace OdataQueryLite.ExpressionBuilding
                 var arg = Build(node.Args[1], argType);
                 var mi = typeof(string).GetMethod(method, new[] { argType })
                     ?? throw new InvalidOperationException($"string.{method}({argType.Name}) not found.");
-                return Expression.Call(instance, mi, arg);
+                return GuardStringNull(instance, Expression.Call(instance, mi, arg), Expression.Constant(false));
             }
 
             private Expression StringInstance(FunctionNode node, string method)
@@ -229,14 +240,15 @@ namespace OdataQueryLite.ExpressionBuilding
                 var instance = Build(node.Args[0], typeof(string));
                 var mi = typeof(string).GetMethod(method, Type.EmptyTypes)
                     ?? throw new InvalidOperationException($"string.{method}() not found.");
-                return Expression.Call(instance, mi);
+                return GuardStringNull(instance, Expression.Call(instance, mi), Expression.Constant(null, typeof(string)));
             }
 
             private Expression StringLengthProperty(FunctionNode node)
             {
                 ExpectArgs(node, 1);
                 var instance = Build(node.Args[0], typeof(string));
-                return Expression.Property(instance, nameof(string.Length));
+                var len = Expression.Convert(Expression.Property(instance, nameof(string.Length)), typeof(int?));
+                return GuardStringNull(instance, len, Expression.Constant(null, typeof(int?)));
             }
 
             private Expression SubstringCall(FunctionNode node)
@@ -245,10 +257,15 @@ namespace OdataQueryLite.ExpressionBuilding
                     throw new ArgumentException($"substring expects 2 or 3 args; got {node.Args.Count}.");
                 var instance = Build(node.Args[0], typeof(string));
                 var start = Build(node.Args[1], typeof(int));
+                Expression call;
                 if (node.Args.Count == 2)
-                    return Expression.Call(instance, typeof(string).GetMethod(nameof(string.Substring), new[] { typeof(int) }), start);
-                var len = Build(node.Args[2], typeof(int));
-                return Expression.Call(instance, typeof(string).GetMethod(nameof(string.Substring), new[] { typeof(int), typeof(int) }), start, len);
+                    call = Expression.Call(instance, typeof(string).GetMethod(nameof(string.Substring), new[] { typeof(int) }), start);
+                else
+                {
+                    var len = Build(node.Args[2], typeof(int));
+                    call = Expression.Call(instance, typeof(string).GetMethod(nameof(string.Substring), new[] { typeof(int), typeof(int) }), start, len);
+                }
+                return GuardStringNull(instance, call, Expression.Constant(null, typeof(string)));
             }
 
             private Expression ConcatCall(FunctionNode node)
@@ -257,7 +274,11 @@ namespace OdataQueryLite.ExpressionBuilding
                 var a = Build(node.Args[0], typeof(string));
                 var b = Build(node.Args[1], typeof(string));
                 var mi = typeof(string).GetMethod(nameof(string.Concat), new[] { typeof(string), typeof(string) });
-                return Expression.Call(mi, a, b);
+                var concat = Expression.Call(mi, a, b);
+                var anyNull = Expression.OrElse(
+                    Expression.Equal(a, Expression.Constant(null, typeof(string))),
+                    Expression.Equal(b, Expression.Constant(null, typeof(string))));
+                return Expression.Condition(anyNull, Expression.Constant(null, typeof(string)), concat);
             }
 
             private Expression DateProperty(FunctionNode node, string property)

@@ -291,5 +291,105 @@ namespace OdataQueryLite.Tests
             Assert.True(c.Match(new Sale { Items = { new Order(), new Order() } }));
             Assert.False(c.Match(new Sale { Items = { new Order() } }));
         }
+
+        public sealed class SetEntity
+        {
+            public HashSet<Order> Tagged { get; set; } = new();
+            public ISet<Order> Marked { get; set; } = new HashSet<Order>();
+        }
+
+        [Fact]
+        public void ISet_navigation_resolved_by_collection_element_type_lookup()
+        {
+            // Regression: ISet<T> / IReadOnlySet<T> added to the enumerated collection check
+            // so any/all/$count work on set-typed navigations without falling back to GetInterfaces.
+            var c = Compile<SetEntity>("Marked/any(o: o/Quantity gt 0)");
+            var match = new SetEntity { Marked = new HashSet<Order> { new() { Quantity = 5 } } };
+            var miss = new SetEntity { Marked = new HashSet<Order> { new() { Quantity = 0 } } };
+            Assert.True(c.Match(match));
+            Assert.False(c.Match(miss));
+        }
+
+        public sealed class Nested
+        {
+            public ICollection<Inner> Outers { get; set; } = new List<Inner>();
+        }
+        public sealed class Inner
+        {
+            public int Threshold { get; set; }
+            public ICollection<Leaf> Children { get; set; } = new List<Leaf>();
+        }
+        public sealed class Leaf
+        {
+            public int Value { get; set; }
+        }
+
+        [Fact]
+        public void Nested_lambda_inner_scope_can_reference_outer_scope()
+        {
+            // Regression: lambda scope lookup used Peek() so inner `i` could not see outer `o`.
+            // Filter: outers where ANY outer has at least one child whose Value > outer's Threshold.
+            var c = Compile<Nested>("Outers/any(o: o/Children/any(i: i/Value gt o/Threshold))");
+
+            var matches = new Nested
+            {
+                Outers =
+                {
+                    new Inner { Threshold = 10, Children = { new Leaf { Value = 50 } } }
+                }
+            };
+            var noMatch = new Nested
+            {
+                Outers =
+                {
+                    new Inner { Threshold = 100, Children = { new Leaf { Value = 50 } } }
+                }
+            };
+            Assert.True(c.Match(matches));
+            Assert.False(c.Match(noMatch));
+        }
+
+        // OData spec: function returning null when arg is null. We collapse to false for bool
+        // returns and null for non-bool — matches user intent (Phase 1.B.8 design call).
+        [Fact]
+        public void Contains_on_null_member_does_not_throw_and_returns_false()
+        {
+            var c = Compile<Customer>("contains(Name, 'a')");
+            Assert.False(c.Match(new Customer { Name = null }));
+            Assert.True(c.Match(new Customer { Name = "alice" }));
+        }
+
+        [Fact]
+        public void Startswith_on_null_member_does_not_throw_and_returns_false()
+        {
+            var c = Compile<Customer>("startswith(Name, 'a')");
+            Assert.False(c.Match(new Customer { Name = null }));
+            Assert.True(c.Match(new Customer { Name = "alice" }));
+        }
+
+        [Fact]
+        public void Tolower_on_null_member_returns_null_and_compare_excludes_row()
+        {
+            var c = Compile<Customer>("tolower(Name) eq 'alice'");
+            Assert.False(c.Match(new Customer { Name = null }));
+            Assert.True(c.Match(new Customer { Name = "ALICE" }));
+        }
+
+        [Fact]
+        public void Length_on_null_member_returns_null_and_compare_excludes_row()
+        {
+            var c = Compile<Customer>("length(Name) eq 5");
+            Assert.False(c.Match(new Customer { Name = null }));
+            Assert.True(c.Match(new Customer { Name = "Alice" }));
+        }
+
+        [Fact]
+        public void Concat_with_null_arg_returns_null()
+        {
+            var c = Compile<Customer>("concat(Name, Email) eq 'AliceX'");
+            Assert.False(c.Match(new Customer { Name = null, Email = "X" }));
+            Assert.False(c.Match(new Customer { Name = "Alice", Email = null }));
+            Assert.True(c.Match(new Customer { Name = "Alice", Email = "X" }));
+        }
     }
 }
