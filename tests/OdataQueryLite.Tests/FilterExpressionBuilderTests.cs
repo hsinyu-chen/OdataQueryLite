@@ -391,5 +391,17 @@ namespace OdataQueryLite.Tests
             Assert.False(c.Match(new Customer { Name = "Alice", Email = null }));
             Assert.True(c.Match(new Customer { Name = "Alice", Email = "X" }));
         }
+
+        [Fact]
+        public void IndexOf_returns_int_and_null_member_propagates_null()
+        {
+            // Regression: IndexOf returns int. Before this fix the null-guard's true/false
+            // branches were int vs bool (false fallback), which would have thrown at
+            // Expression.Condition construction. Lift result to int? so both branches match.
+            var c = Compile<Customer>("indexof(Name, 'lic') eq 1");
+            Assert.True(c.Match(new Customer { Name = "Alice" }));     // "lic" at index 1
+            Assert.False(c.Match(new Customer { Name = "Bob" }));
+            Assert.False(c.Match(new Customer { Name = null }));
+        }
     }
 }

@@ -62,7 +62,7 @@ namespace OdataQueryLite.Caching
             if (_cache.Count >= _maxEntries
                 && Interlocked.CompareExchange(ref _isEvicting, 1, 0) == 0)
             {
-                try { EvictColdest(_maxEntries / 10); }
+                try { EvictColdest(Math.Max(1, _maxEntries / 10)); }
                 finally { Volatile.Write(ref _isEvicting, 0); }
             }
 

@@ -191,14 +191,14 @@ namespace OdataQueryLite.ExpressionBuilding
             {
                 return node.Name switch
                 {
-                    FunctionName.Contains => StringMethodCall(node, nameof(string.Contains), typeof(string)),
-                    FunctionName.StartsWith => StringMethodCall(node, nameof(string.StartsWith), typeof(string)),
-                    FunctionName.EndsWith => StringMethodCall(node, nameof(string.EndsWith), typeof(string)),
+                    FunctionName.Contains => StringBoolMethodCall(node, nameof(string.Contains)),
+                    FunctionName.StartsWith => StringBoolMethodCall(node, nameof(string.StartsWith)),
+                    FunctionName.EndsWith => StringBoolMethodCall(node, nameof(string.EndsWith)),
                     FunctionName.ToLower => StringInstance(node, nameof(string.ToLower)),
                     FunctionName.ToUpper => StringInstance(node, nameof(string.ToUpper)),
                     FunctionName.Trim => StringInstance(node, nameof(string.Trim)),
                     FunctionName.Length => StringLengthProperty(node),
-                    FunctionName.IndexOf => StringMethodCall(node, nameof(string.IndexOf), typeof(string)),
+                    FunctionName.IndexOf => StringIndexOfCall(node),
                     FunctionName.Substring => SubstringCall(node),
                     FunctionName.Concat => ConcatCall(node),
                     FunctionName.Year => DateProperty(node, nameof(DateTime.Year)),
@@ -224,14 +224,27 @@ namespace OdataQueryLite.ExpressionBuilding
                     nullResult,
                     nonNullResult);
 
-            private Expression StringMethodCall(FunctionNode node, string method, Type argType)
+            private Expression StringBoolMethodCall(FunctionNode node, string method)
             {
                 ExpectArgs(node, 2);
                 var instance = Build(node.Args[0], typeof(string));
-                var arg = Build(node.Args[1], argType);
-                var mi = typeof(string).GetMethod(method, new[] { argType })
-                    ?? throw new InvalidOperationException($"string.{method}({argType.Name}) not found.");
+                var arg = Build(node.Args[1], typeof(string));
+                var mi = typeof(string).GetMethod(method, new[] { typeof(string) })
+                    ?? throw new InvalidOperationException($"string.{method}(string) not found.");
                 return GuardStringNull(instance, Expression.Call(instance, mi, arg), Expression.Constant(false));
+            }
+
+            private Expression StringIndexOfCall(FunctionNode node)
+            {
+                ExpectArgs(node, 2);
+                var instance = Build(node.Args[0], typeof(string));
+                var arg = Build(node.Args[1], typeof(string));
+                var mi = typeof(string).GetMethod(nameof(string.IndexOf), new[] { typeof(string) })
+                    ?? throw new InvalidOperationException("string.IndexOf(string) not found.");
+                // IndexOf returns int — lift to int? so the null-guard's true/false branches match
+                // and so callers comparing the result use the nullable slot type.
+                var call = Expression.Convert(Expression.Call(instance, mi, arg), typeof(int?));
+                return GuardStringNull(instance, call, Expression.Constant(null, typeof(int?)));
             }
 
             private Expression StringInstance(FunctionNode node, string method)
@@ -290,16 +303,8 @@ namespace OdataQueryLite.ExpressionBuilding
                 if (effective != typeof(DateTime) && effective != typeof(DateTimeOffset))
                     throw new ArgumentException($"Date function expects DateTime/DateTimeOffset; got {operand.Type.Name}.");
 
-                // For nullable operands: `dt.HasValue ? (int?)dt.Value.Year : null` so null
-                // propagates per OData spec rather than throwing at row evaluation.
                 if (underlying != null)
-                {
-                    var hasValue = Expression.Property(operand, nameof(Nullable<int>.HasValue));
-                    var value = Expression.Property(operand, nameof(Nullable<int>.Value));
-                    var prop = Expression.Property(value, property);
-                    var lifted = Expression.Convert(prop, typeof(int?));
-                    return Expression.Condition(hasValue, lifted, Expression.Constant(null, typeof(int?)));
-                }
+                    return IfNullableHasValue(operand, value => Expression.Property(value, property), typeof(int?));
                 return Expression.Property(operand, property);
             }
 
@@ -321,19 +326,27 @@ namespace OdataQueryLite.ExpressionBuilding
 
                 if (underlying != null)
                 {
-                    var hasValue = Expression.Property(operand, nameof(Nullable<int>.HasValue));
-                    var value = Expression.Property(operand, nameof(Nullable<int>.Value));
-                    Expression arg = value.Type == mathArg ? value : Expression.Convert(value, mathArg);
-                    var call = Expression.Call(mi, arg);
                     var nullableMath = typeof(Nullable<>).MakeGenericType(mathArg);
-                    return Expression.Condition(
-                        hasValue,
-                        Expression.Convert(call, nullableMath),
-                        Expression.Constant(null, nullableMath));
+                    return IfNullableHasValue(operand, value =>
+                    {
+                        var arg = value.Type == mathArg ? value : Expression.Convert(value, mathArg);
+                        return Expression.Call(mi, arg);
+                    }, nullableMath);
                 }
 
                 Expression nonNullArg = operand.Type == mathArg ? operand : Expression.Convert(operand, mathArg);
                 return Expression.Call(mi, nonNullArg);
+            }
+
+            // Builds `nullable.HasValue ? (TResult)body(nullable.Value) : null`. Shared by
+            // date-property and math-call null propagation.
+            private static Expression IfNullableHasValue(Expression nullableOperand, Func<Expression, Expression> bodyFromValue, Type nullableResultType)
+            {
+                var hasValue = Expression.Property(nullableOperand, nameof(Nullable<int>.HasValue));
+                var value = Expression.Property(nullableOperand, nameof(Nullable<int>.Value));
+                var inner = bodyFromValue(value);
+                var lifted = inner.Type == nullableResultType ? inner : Expression.Convert(inner, nullableResultType);
+                return Expression.Condition(hasValue, lifted, Expression.Constant(null, nullableResultType));
             }
 
             private static void ExpectArgs(FunctionNode node, int count)

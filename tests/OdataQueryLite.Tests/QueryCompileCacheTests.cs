@@ -147,6 +147,22 @@ namespace OdataQueryLite.Tests
             Assert.Equal(1, cache.Count);
         }
 
+        [Fact]
+        public void Tiny_cap_still_evicts_at_least_one_entry()
+        {
+            // Regression: maxEntries / 10 floors to 0 when maxEntries < 10, which previously
+            // turned EvictColdest into a no-op and let the dictionary grow unbounded.
+            var cache = new QueryCompileCache(maxEntries: 3);
+            cache.GetOrBuild<Row>("Id eq 1", out _);
+            cache.GetOrBuild<Row>("Name eq 'A'", out _);
+            cache.GetOrBuild<Row>("Amount gt 1", out _);
+            Assert.Equal(3, cache.Count);
+
+            // 4th distinct shape — should trigger eviction of at least one entry.
+            cache.GetOrBuild<Row>("Id ne 1", out _);
+            Assert.True(cache.Count <= 3, $"Count {cache.Count} should not exceed cap.");
+        }
+
         public sealed class OtherRow
         {
             public int Id { get; set; }
