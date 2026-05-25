@@ -301,8 +301,6 @@ namespace OdataQueryLite.Tests
         [Fact]
         public void ISet_navigation_resolved_by_collection_element_type_lookup()
         {
-            // Regression: ISet<T> / IReadOnlySet<T> added to the enumerated collection check
-            // so any/all/$count work on set-typed navigations without falling back to GetInterfaces.
             var c = Compile<SetEntity>("Marked/any(o: o/Quantity gt 0)");
             var match = new SetEntity { Marked = new HashSet<Order> { new() { Quantity = 5 } } };
             var miss = new SetEntity { Marked = new HashSet<Order> { new() { Quantity = 0 } } };
@@ -327,8 +325,8 @@ namespace OdataQueryLite.Tests
         [Fact]
         public void Nested_lambda_inner_scope_can_reference_outer_scope()
         {
-            // Regression: lambda scope lookup used Peek() so inner `i` could not see outer `o`.
-            // Filter: outers where ANY outer has at least one child whose Value > outer's Threshold.
+            // Outers where ANY outer has at least one child whose Value > outer's Threshold —
+            // inner `i` references outer scope `o`'s member.
             var c = Compile<Nested>("Outers/any(o: o/Children/any(i: i/Value gt o/Threshold))");
 
             var matches = new Nested
@@ -395,9 +393,8 @@ namespace OdataQueryLite.Tests
         [Fact]
         public void Comparison_of_bool_returning_subexpression_uses_value_equality()
         {
-            // Regression: TryResolveOperandSlotType previously returned null for
-            // BinaryNode / UnaryNode / LambdaCollectionNode, so the slot fell back to
-            // typeof(object), boxing both bool sides and doing reference equality.
+            // Bool-returning subexpressions (any / not / nested compare) compared to a bool
+            // literal must use value equality, not boxed reference equality.
             var any = Compile<Customer>("Orders/any() eq true");
             Assert.True(any.Match(new Customer { Orders = { new Order() } }));
             Assert.False(any.Match(new Customer { Orders = new List<Order>() }));
@@ -408,11 +405,21 @@ namespace OdataQueryLite.Tests
         }
 
         [Fact]
+        public void Substring_numeric_args_keep_nullable_slot_invariant()
+        {
+            // Numeric arg slots stay nullable per the engine-wide invariant — a packed null
+            // would otherwise unbox-NRE inside the Convert(args[i], int) at the literal site.
+            var c = Compile<Customer>("substring(Name, 1) eq 'lice'");
+            Assert.Equal(typeof(int?), c.SlotTypes[0]);
+            Assert.True(c.Match(new Customer { Name = "Alice" }));
+            Assert.False(c.Match(new Customer { Name = "Bob" }));
+        }
+
+        [Fact]
         public void IndexOf_returns_int_and_null_member_propagates_null()
         {
-            // Regression: IndexOf returns int. Before this fix the null-guard's true/false
-            // branches were int vs bool (false fallback), which would have thrown at
-            // Expression.Condition construction. Lift result to int? so both branches match.
+            // IndexOf returns int; the null-guard's null path must lift to int? so both
+            // branches of the Condition share a type.
             var c = Compile<Customer>("indexof(Name, 'lic') eq 1");
             Assert.True(c.Match(new Customer { Name = "Alice" }));     // "lic" at index 1
             Assert.False(c.Match(new Customer { Name = "Bob" }));

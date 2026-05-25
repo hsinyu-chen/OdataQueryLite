@@ -42,24 +42,15 @@ namespace OdataQueryLite.ExpressionBuilding
         // so the analyzer treats every method body as part of the same contract chain.
         [RequiresUnreferencedCode("Resolves entity properties by name via reflection.")]
         [RequiresDynamicCode("Constructs LINQ Expression trees and instantiates generic methods.")]
-        private sealed class BuildContext
+        private sealed class BuildContext(Type entityType, ParameterExpression entity, ParameterExpression args, IReadOnlyList<LiteralValue> literals)
         {
-            private readonly Type _entityType;
-            private readonly ParameterExpression _entity;
-            private readonly ParameterExpression _args;
-            private readonly IReadOnlyList<LiteralValue> _literals;
+            private readonly Type _entityType = entityType;
+            private readonly ParameterExpression _entity = entity;
+            private readonly ParameterExpression _args = args;
+            private readonly IReadOnlyList<LiteralValue> _literals = literals;
             private readonly Stack<(string Name, ParameterExpression Param)> _lambdaScopes = new();
 
-            public Type[] SlotTypes { get; }
-
-            public BuildContext(Type entityType, ParameterExpression entity, ParameterExpression args, IReadOnlyList<LiteralValue> literals)
-            {
-                _entityType = entityType;
-                _entity = entity;
-                _args = args;
-                _literals = literals;
-                SlotTypes = new Type[literals.Count];
-            }
+            public Type[] SlotTypes { get; } = new Type[literals.Count];
 
             public Expression Build(FilterNode node, Type expectedType) => node switch
             {
@@ -67,13 +58,12 @@ namespace OdataQueryLite.ExpressionBuilding
                 UnaryNode u => Expression.Not(Build(u.Operand, typeof(bool))),
                 FunctionNode f => BuildFunction(f),
                 MemberNode m => BuildMember(m.Path),
-                ParamRefNode p => RecordAndAccess(p.Index, expectedType ?? typeof(object)),
+                ParamRefNode p => RecordAndAccess(p.Index, expectedType),
                 LambdaCollectionNode lc => BuildLambdaCollection(lc),
-                LiteralNode l => Expression.Constant(l.Value, l.Value?.GetType() ?? typeof(object)),
                 _ => throw new NotSupportedException($"Unsupported filter node: {node.GetType().Name}")
             };
 
-            private Expression BuildBinary(BinaryNode node)
+            private BinaryExpression BuildBinary(BinaryNode node)
             {
                 if (node.Op == BinaryOp.And) return Expression.AndAlso(Build(node.Left, typeof(bool)), Build(node.Right, typeof(bool)));
                 if (node.Op == BinaryOp.Or) return Expression.OrElse(Build(node.Left, typeof(bool)), Build(node.Right, typeof(bool)));
@@ -99,7 +89,7 @@ namespace OdataQueryLite.ExpressionBuilding
                 _ => null
             };
 
-            private static Expression EmitCompare(BinaryOp op, Expression l, Expression r) => op switch
+            private static BinaryExpression EmitCompare(BinaryOp op, Expression l, Expression r) => op switch
             {
                 BinaryOp.Eq => Expression.Equal(l, r),
                 BinaryOp.Ne => Expression.NotEqual(l, r),
@@ -222,13 +212,13 @@ namespace OdataQueryLite.ExpressionBuilding
             // EF Core SQL handles null gracefully, but the OData spec also says functions
             // return null when any arg is null. We collapse to the type-appropriate "no match"
             // sentinel: false for bool methods, null for string/int methods (lifted to nullable).
-            private static Expression GuardStringNull(Expression instance, Expression nonNullResult, Expression nullResult) =>
+            private static ConditionalExpression GuardStringNull(Expression instance, Expression nonNullResult, Expression nullResult) =>
                 Expression.Condition(
                     Expression.Equal(instance, Expression.Constant(null, typeof(string))),
                     nullResult,
                     nonNullResult);
 
-            private Expression StringBoolMethodCall(FunctionNode node, string method)
+            private ConditionalExpression StringBoolMethodCall(FunctionNode node, string method)
             {
                 ExpectArgs(node, 2);
                 var instance = Build(node.Args[0], typeof(string));
@@ -238,7 +228,7 @@ namespace OdataQueryLite.ExpressionBuilding
                 return GuardStringNull(instance, Expression.Call(instance, mi, arg), Expression.Constant(false));
             }
 
-            private Expression StringIndexOfCall(FunctionNode node)
+            private ConditionalExpression StringIndexOfCall(FunctionNode node)
             {
                 ExpectArgs(node, 2);
                 var instance = Build(node.Args[0], typeof(string));
@@ -251,7 +241,7 @@ namespace OdataQueryLite.ExpressionBuilding
                 return GuardStringNull(instance, call, Expression.Constant(null, typeof(int?)));
             }
 
-            private Expression StringInstance(FunctionNode node, string method)
+            private ConditionalExpression StringInstance(FunctionNode node, string method)
             {
                 ExpectArgs(node, 1);
                 var instance = Build(node.Args[0], typeof(string));
@@ -260,7 +250,7 @@ namespace OdataQueryLite.ExpressionBuilding
                 return GuardStringNull(instance, Expression.Call(instance, mi), Expression.Constant(null, typeof(string)));
             }
 
-            private Expression StringLengthProperty(FunctionNode node)
+            private ConditionalExpression StringLengthProperty(FunctionNode node)
             {
                 ExpectArgs(node, 1);
                 var instance = Build(node.Args[0], typeof(string));
@@ -268,24 +258,29 @@ namespace OdataQueryLite.ExpressionBuilding
                 return GuardStringNull(instance, len, Expression.Constant(null, typeof(int?)));
             }
 
-            private Expression SubstringCall(FunctionNode node)
+            private ConditionalExpression SubstringCall(FunctionNode node)
             {
                 if (node.Args.Count is not (2 or 3))
                     throw new ArgumentException($"substring expects 2 or 3 args; got {node.Args.Count}.");
                 var instance = Build(node.Args[0], typeof(string));
-                var start = Build(node.Args[1], typeof(int));
+                // Numeric args go through SlotTypeFor (int?) so a ParamRef slot stays nullable
+                // in line with every other arg site; unwrap back to int for the BCL signature.
+                var startVal = UnwrapNullableInt(Build(node.Args[1], TypeCoercion.SlotTypeFor(typeof(int))));
                 Expression call;
                 if (node.Args.Count == 2)
-                    call = Expression.Call(instance, typeof(string).GetMethod(nameof(string.Substring), new[] { typeof(int) }), start);
+                    call = Expression.Call(instance, typeof(string).GetMethod(nameof(string.Substring), new[] { typeof(int) }), startVal);
                 else
                 {
-                    var len = Build(node.Args[2], typeof(int));
-                    call = Expression.Call(instance, typeof(string).GetMethod(nameof(string.Substring), new[] { typeof(int), typeof(int) }), start, len);
+                    var lenVal = UnwrapNullableInt(Build(node.Args[2], TypeCoercion.SlotTypeFor(typeof(int))));
+                    call = Expression.Call(instance, typeof(string).GetMethod(nameof(string.Substring), new[] { typeof(int), typeof(int) }), startVal, lenVal);
                 }
                 return GuardStringNull(instance, call, Expression.Constant(null, typeof(string)));
             }
 
-            private Expression ConcatCall(FunctionNode node)
+            private static Expression UnwrapNullableInt(Expression expr) =>
+                expr.Type == typeof(int?) ? Expression.Property(expr, nameof(Nullable<>.Value)) : expr;
+
+            private ConditionalExpression ConcatCall(FunctionNode node)
             {
                 ExpectArgs(node, 2);
                 var a = Build(node.Args[0], typeof(string));
@@ -344,10 +339,10 @@ namespace OdataQueryLite.ExpressionBuilding
 
             // Builds `nullable.HasValue ? (TResult)body(nullable.Value) : null`. Shared by
             // date-property and math-call null propagation.
-            private static Expression IfNullableHasValue(Expression nullableOperand, Func<Expression, Expression> bodyFromValue, Type nullableResultType)
+            private static ConditionalExpression IfNullableHasValue(Expression nullableOperand, Func<Expression, Expression> bodyFromValue, Type nullableResultType)
             {
-                var hasValue = Expression.Property(nullableOperand, nameof(Nullable<int>.HasValue));
-                var value = Expression.Property(nullableOperand, nameof(Nullable<int>.Value));
+                var hasValue = Expression.Property(nullableOperand, nameof(Nullable<>.HasValue));
+                var value = Expression.Property(nullableOperand, nameof(Nullable<>.Value));
                 var inner = bodyFromValue(value);
                 var lifted = inner.Type == nullableResultType ? inner : Expression.Convert(inner, nullableResultType);
                 return Expression.Condition(hasValue, lifted, Expression.Constant(null, nullableResultType));
@@ -370,7 +365,7 @@ namespace OdataQueryLite.ExpressionBuilding
                 _ => throw new NotSupportedException($"FunctionReturnType: {fn} not mapped.")
             };
 
-            private Expression BuildLambdaCollection(LambdaCollectionNode node)
+            private MethodCallExpression BuildLambdaCollection(LambdaCollectionNode node)
             {
                 var collection = BuildMember(node.CollectionPath);
                 var elem = GetEnumerableElementType(collection.Type)

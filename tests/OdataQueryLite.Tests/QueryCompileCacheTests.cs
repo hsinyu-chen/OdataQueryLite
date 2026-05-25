@@ -150,8 +150,8 @@ namespace OdataQueryLite.Tests
         [Fact]
         public void Tiny_cap_still_evicts_at_least_one_entry()
         {
-            // Regression: maxEntries / 10 floors to 0 when maxEntries < 10, which previously
-            // turned EvictColdest into a no-op and let the dictionary grow unbounded.
+            // Caps below 10 still need to evict — maxEntries / 10 floors to 0, so the
+            // soft-cap minimum guarantees at least one entry leaves per overflow round.
             var cache = new QueryCompileCache(maxEntries: 3);
             cache.GetOrBuild<Row>("Id eq 1", out _);
             cache.GetOrBuild<Row>("Name eq 'A'", out _);
