@@ -93,12 +93,37 @@ namespace OdataQueryLite.ExpressionBuilding
                 var rightSlot = preRight != null
                     ? TypeCoercion.SlotTypeFor(preRight.Type)
                     : TryResolveOperandSlotType(node.Right);
-                var slot = leftSlot ?? rightSlot ?? typeof(object);
+                // Both sides numeric but at different ranks (e.g. int member vs decimal
+                // literal) — widen to the larger so a fractional literal doesn't narrow
+                // and banker-round into a spurious hit.
+                var slot = leftSlot != null && rightSlot != null && leftSlot != rightSlot
+                    ? PromoteNumeric(leftSlot, rightSlot)
+                    : (leftSlot ?? rightSlot ?? typeof(object));
 
                 var left = TypeCoercion.LiftToSlotType(preLeft ?? Build(node.Left, slot), slot);
                 var right = TypeCoercion.LiftToSlotType(preRight ?? Build(node.Right, slot), slot);
                 return EmitCompare(node.Op, left, right);
             }
+
+            // Numeric "ranks" — when two operand slots differ, the side with the higher rank
+            // can losslessly represent the other (decimal > double > float > long > int > …).
+            // Falls back to the left slot when either side isn't numeric.
+            private static Type PromoteNumeric(Type a, Type b)
+            {
+                var ra = NumericRank(Nullable.GetUnderlyingType(a) ?? a);
+                var rb = NumericRank(Nullable.GetUnderlyingType(b) ?? b);
+                if (ra < 0 || rb < 0) return a;
+                return ra >= rb ? a : b;
+            }
+
+            private static int NumericRank(Type t) =>
+                t == typeof(decimal) ? 5
+                : t == typeof(double) ? 4
+                : t == typeof(float) ? 3
+                : t == typeof(long) || t == typeof(ulong) ? 2
+                : t == typeof(int) || t == typeof(uint) ? 1
+                : t == typeof(short) || t == typeof(ushort) || t == typeof(byte) || t == typeof(sbyte) ? 0
+                : -1;
 
             private static Type TryResolveOperandSlotType(FilterNode operand) => operand switch
             {
