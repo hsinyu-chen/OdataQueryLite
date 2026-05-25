@@ -320,8 +320,10 @@ namespace OdataQueryLite.ExpressionBuilding
                 var operand = Build(node.Args[0], typeof(DateTime));
                 var underlying = Nullable.GetUnderlyingType(operand.Type);
                 var effective = underlying ?? operand.Type;
-                if (effective != typeof(DateTime) && effective != typeof(DateTimeOffset))
-                    throw new ArgumentException($"Date function expects DateTime/DateTimeOffset; got {operand.Type.Name}.");
+                // DateOnly maps to Edm.Date per OData v4; only Year/Month/Day are valid on it
+                // (Hour/Minute/Second have no source property and throw via reflection lookup).
+                if (effective != typeof(DateTime) && effective != typeof(DateTimeOffset) && effective != typeof(DateOnly))
+                    throw new ArgumentException($"Date function expects DateTime/DateTimeOffset/DateOnly; got {operand.Type.Name}.");
 
                 if (underlying != null)
                     return IfNullableHasValue(operand, value => Expression.Property(value, property), typeof(int?));

@@ -33,6 +33,8 @@ namespace OdataQueryLite.Tests
             public int? Age { get; set; }
             public DateTime CreatedAt { get; set; }
             public DateTimeOffset? LastSeenAt { get; set; }
+            public DateOnly BirthDate { get; set; }
+            public DateOnly? AnniversaryDate { get; set; }
             public ICollection<Order> Orders { get; set; } = new List<Order>();
             public Status PrimaryStatus { get; set; }
         }
@@ -426,6 +428,22 @@ namespace OdataQueryLite.Tests
             Assert.Equal(typeof(int?), c.SlotTypes[0]);
             Assert.True(c.Match(new Customer { Name = "Alice" }));
             Assert.False(c.Match(new Customer { Name = "Bob" }));
+        }
+
+        [Fact]
+        public void Date_functions_support_DateOnly_per_Edm_Date_mapping()
+        {
+            // OData v4 Edm.Date maps to .NET DateOnly. year/month/day must read directly from
+            // the DateOnly property; the value-typed and nullable forms both route through
+            // DateProperty's effective-type check.
+            var d = new DateOnly(2026, 5, 25);
+            var c1 = Compile<Customer>("year(BirthDate) eq 2026").Match(new Customer { BirthDate = d });
+            Assert.True(c1);
+            Assert.True(Compile<Customer>("month(BirthDate) eq 5").Match(new Customer { BirthDate = d }));
+            Assert.True(Compile<Customer>("day(BirthDate) eq 25").Match(new Customer { BirthDate = d }));
+            Assert.True(Compile<Customer>("year(AnniversaryDate) eq 2026").Match(new Customer { AnniversaryDate = d }));
+            // Nullable null propagation per spec.
+            Assert.False(Compile<Customer>("year(AnniversaryDate) eq 2026").Match(new Customer { AnniversaryDate = null }));
         }
 
         [Fact]
