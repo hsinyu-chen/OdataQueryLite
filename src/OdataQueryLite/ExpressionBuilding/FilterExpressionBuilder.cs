@@ -272,16 +272,23 @@ namespace OdataQueryLite.ExpressionBuilding
                 var instance = Build(node.Args[0], typeof(string));
                 // Numeric args go through SlotTypeFor (int?) so a ParamRef slot stays nullable
                 // in line with every other arg site; unwrap back to int for the BCL signature.
-                var startVal = UnwrapNullableInt(Build(node.Args[1], TypeCoercion.SlotTypeFor(typeof(int))));
+                var startRaw = Build(node.Args[1], TypeCoercion.SlotTypeFor(typeof(int)));
+                var startVal = UnwrapNullableInt(startRaw);
+                Expression nullGuard = Expression.Equal(instance, Expression.Constant(null, typeof(string)));
+                if (startRaw.Type == typeof(int?))
+                    nullGuard = Expression.OrElse(nullGuard, Expression.Equal(startRaw, Expression.Constant(null, typeof(int?))));
                 Expression call;
                 if (node.Args.Count == 2)
                     call = Expression.Call(instance, typeof(string).GetMethod(nameof(string.Substring), [typeof(int)]), startVal);
                 else
                 {
-                    var lenVal = UnwrapNullableInt(Build(node.Args[2], TypeCoercion.SlotTypeFor(typeof(int))));
+                    var lenRaw = Build(node.Args[2], TypeCoercion.SlotTypeFor(typeof(int)));
+                    var lenVal = UnwrapNullableInt(lenRaw);
+                    if (lenRaw.Type == typeof(int?))
+                        nullGuard = Expression.OrElse(nullGuard, Expression.Equal(lenRaw, Expression.Constant(null, typeof(int?))));
                     call = Expression.Call(instance, typeof(string).GetMethod(nameof(string.Substring), [typeof(int), typeof(int)]), startVal, lenVal);
                 }
-                return GuardStringNull(instance, call, Expression.Constant(null, typeof(string)));
+                return Expression.Condition(nullGuard, Expression.Constant(null, typeof(string)), call);
             }
 
             private static Expression UnwrapNullableInt(Expression expr) =>

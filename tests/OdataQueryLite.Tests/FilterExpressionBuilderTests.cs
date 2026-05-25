@@ -429,6 +429,18 @@ namespace OdataQueryLite.Tests
         }
 
         [Fact]
+        public void Substring_with_null_numeric_arg_returns_null_per_spec()
+        {
+            // OData v4 functions return null when any argument is null. The numeric arg slot is
+            // nullable so a packed-null int? must short-circuit before UnwrapNullableInt's .Value
+            // dereference. Result: silently false on `... eq <literal>` per the null-comparison rule.
+            Assert.False(Compile<Customer>("substring(Name, null) eq 'lice'").Match(new Customer { Name = "Alice" }));
+            Assert.False(Compile<Customer>("substring(Name, 1, null) eq 'lice'").Match(new Customer { Name = "Alice" }));
+            // Null instance still short-circuits to null too (existing guard).
+            Assert.False(Compile<Customer>("substring(Name, 1) eq 'lice'").Match(new Customer { Name = null }));
+        }
+
+        [Fact]
         public void IndexOf_returns_int_and_null_member_propagates_null()
         {
             // IndexOf returns int; the null-guard's null path must lift to int? so both
