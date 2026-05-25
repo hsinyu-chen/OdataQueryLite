@@ -282,11 +282,13 @@ namespace OdataQueryLite.ExpressionBuilding
                 var mi = typeof(string).GetMethod(method, [typeof(string)])
                     ?? throw new InvalidOperationException($"string.{method}(string) not found.");
                 // BCL Contains/StartsWith/EndsWith throw ArgumentNullException on a null arg.
-                // Per OData v4 a null function arg yields null; we collapse to false in the
-                // outer compare context, consistent with the rest of the string-null guards.
+                // Per OData v4 a null function arg yields null — return bool? null so a
+                // comparison like \`contains(Name, null) eq false\` follows the null-compare rule
+                // (null != false) rather than spuriously matching. Outer boundary collapses
+                // null → false via CoerceToBool when this feeds the filter / lambda body.
                 return Expression.Condition(EitherStringNull(instance, arg),
-                    Expression.Constant(false),
-                    Expression.Call(instance, mi, arg));
+                    Expression.Constant(null, typeof(bool?)),
+                    Expression.Convert(Expression.Call(instance, mi, arg), typeof(bool?)));
             }
 
             private ConditionalExpression StringIndexOfCall(FunctionNode node)

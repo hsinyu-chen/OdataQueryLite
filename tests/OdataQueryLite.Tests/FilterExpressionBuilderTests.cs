@@ -512,6 +512,16 @@ namespace OdataQueryLite.Tests
         }
 
         [Fact]
+        public void Contains_with_null_arg_compared_to_false_does_not_match_per_spec()
+        {
+            // Per OData v4 a null function arg yields null; `null eq false` is false per
+            // the null-comparison rule. Returning false directly from the function would
+            // make `contains(Name, null) eq false` spuriously match. The bool? return +
+            // top-level CoerceToBool keeps spec semantics intact.
+            Assert.False(Compile<Customer>("contains(Name, null) eq false").Match(new Customer { Name = "Alice" }));
+        }
+
+        [Fact]
         public void Contains_with_null_string_arg_collapses_to_false_per_spec()
         {
             // ParamRef null packed as string at the arg slot must not reach BCL Contains —

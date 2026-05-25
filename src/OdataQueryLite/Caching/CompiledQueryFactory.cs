@@ -75,6 +75,14 @@ namespace OdataQueryLite.Caching
         private sealed class ArgsClosure
         {
             public object[] Values;
+
+            // EF Core hashes Expression.Constant by the wrapped instance's Equals/GetHashCode.
+            // Default reference equality makes every Apply call produce a structurally-new
+            // tree, busting EF's query plan cache. All ArgsClosure instances are
+            // interchangeable as far as the tree shape is concerned (the parameterizer reads
+            // Values via the FieldInfo at execution time), so equate them by type.
+            public override bool Equals(object obj) => obj is ArgsClosure;
+            public override int GetHashCode() => typeof(ArgsClosure).GetHashCode();
         }
 
         private static readonly FieldInfo _valuesField =
