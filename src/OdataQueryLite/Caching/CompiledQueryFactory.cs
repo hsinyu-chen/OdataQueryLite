@@ -66,7 +66,7 @@ namespace OdataQueryLite.Caching
                     && Volatile.Read(ref _aotWarningEmitted) == 0
                     && Interlocked.CompareExchange(ref _aotWarningEmitted, 1, 0) == 0)
                 {
-                    OdataQueryLiteEventSource.Log.AotInMemoryProviderDetected(typeof(T).FullName);
+                    OdataQueryLiteEventSource.Log.AotInMemoryProviderDetected(typeof(T).FullName ?? typeof(T).Name);
                 }
 
                 // No literals — _body holds no references to _argsParam, so we can skip the
@@ -74,7 +74,7 @@ namespace OdataQueryLite.Caching
                 if (_slotTypes.Length == 0)
                     return source.Where(Expression.Lambda<Func<T, bool>>(_body, _entityParam));
 
-                var args = new object[_slotTypes.Length];
+                var args = new object?[_slotTypes.Length];
                 for (int i = 0; i < _slotTypes.Length; i++)
                     args[i] = TypeCoercion.Coerce(literals[i].Value, literals[i].Kind, _slotTypes[i]);
 
@@ -89,26 +89,26 @@ namespace OdataQueryLite.Caching
         // as a captured value and parameterize it (`@p0`) instead.
         private sealed class ArgsClosure
         {
-            public object[] Values;
+            public object?[] Values = [];
 
             // EF Core hashes Expression.Constant by the wrapped instance's Equals/GetHashCode.
             // Default reference equality makes every Apply call produce a structurally-new
             // tree, busting EF's query plan cache. All ArgsClosure instances are
             // interchangeable as far as the tree shape is concerned (the parameterizer reads
             // Values via the FieldInfo at execution time), so equate them by type.
-            public override bool Equals(object obj) => obj is ArgsClosure;
+            public override bool Equals(object? obj) => obj is ArgsClosure;
             public override int GetHashCode() => typeof(ArgsClosure).GetHashCode();
         }
 
         private static readonly FieldInfo _valuesField =
-            typeof(ArgsClosure).GetField(nameof(ArgsClosure.Values));
+            typeof(ArgsClosure).GetField(nameof(ArgsClosure.Values))!;
 
         private sealed class ArgsSubstitutor : ExpressionVisitor
         {
             private readonly ParameterExpression _argsParam;
             private readonly MemberExpression _argsAccess;
 
-            public ArgsSubstitutor(ParameterExpression argsParam, object[] args)
+            public ArgsSubstitutor(ParameterExpression argsParam, object?[] args)
             {
                 _argsParam = argsParam;
                 var closure = new ArgsClosure { Values = args };

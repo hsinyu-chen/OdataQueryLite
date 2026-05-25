@@ -22,7 +22,7 @@ namespace OdataQueryLite.ExpressionBuilding
                 : memberType;
         }
 
-        public static object Coerce(object rawValue, LiteralKind kind, Type slotType)
+        public static object? Coerce(object? rawValue, LiteralKind kind, Type slotType)
         {
             ArgumentNullException.ThrowIfNull(slotType);
             if (rawValue == null) return null;

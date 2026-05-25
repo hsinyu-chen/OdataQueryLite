@@ -22,7 +22,7 @@ namespace OdataQueryLite.ExpressionBuilding
         // hand in a Type whose interface metadata the trimmer preserved. EF Core navigation
         // property types satisfy this because they're reachable from the entity class which
         // already carries [DynamicallyAccessedMembers(PublicProperties)] up at the engine entry.
-        public static Type GetEnumerableElementType(
+        public static Type? GetEnumerableElementType(
             [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.Interfaces)] Type t)
         {
             if (t == typeof(string)) return null;

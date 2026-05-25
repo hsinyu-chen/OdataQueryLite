@@ -123,6 +123,13 @@ namespace OdataQueryLite.Tests
         }
 
         [Fact]
+        public void Apply_orderby_collection_property_without_count_rejected()
+        {
+            var clause = OrderByParser.Parse("Addresses");
+            Assert.Throws<OdataQueryException>(() => OrderByApplier.Apply(OwnersWithAddressCounts(), clause).ToList());
+        }
+
+        [Fact]
         public void Apply_count_not_terminal_throws()
         {
             // Addresses/$count/Foo — $count must be terminal.

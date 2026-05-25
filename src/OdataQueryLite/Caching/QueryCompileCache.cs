@@ -24,7 +24,7 @@ namespace OdataQueryLite.Caching
 
         private sealed class Entry
         {
-            public Lazy<object> Compiled;
+            public required Lazy<object> Compiled;
             public long LastUsedTicks;
         }
 

@@ -127,7 +127,7 @@ namespace OdataQueryLite.ExpressionBuilding
                 : t == typeof(short) || t == typeof(ushort) || t == typeof(byte) || t == typeof(sbyte) ? 0
                 : -1;
 
-            private static Type TryResolveOperandSlotType(FilterNode operand) => operand switch
+            private static Type? TryResolveOperandSlotType(FilterNode operand) => operand switch
             {
                 FunctionNode f => TypeCoercion.SlotTypeFor(FunctionReturnType(f.Name)),
                 // Bool-returning nodes — without these, `(A eq B) eq true` and
@@ -292,14 +292,14 @@ namespace OdataQueryLite.ExpressionBuilding
                     nullGuard = Expression.OrElse(nullGuard, Expression.Equal(startRaw, Expression.Constant(null, typeof(int?))));
                 Expression call;
                 if (node.Args.Count == 2)
-                    call = Expression.Call(instance, typeof(string).GetMethod(nameof(string.Substring), [typeof(int)]), startVal);
+                    call = Expression.Call(instance, typeof(string).GetMethod(nameof(string.Substring), [typeof(int)])!, startVal);
                 else
                 {
                     var lenRaw = Build(node.Args[2], TypeCoercion.SlotTypeFor(typeof(int)));
                     var lenVal = UnwrapNullableInt(lenRaw);
                     if (lenRaw.Type == typeof(int?))
                         nullGuard = Expression.OrElse(nullGuard, Expression.Equal(lenRaw, Expression.Constant(null, typeof(int?))));
-                    call = Expression.Call(instance, typeof(string).GetMethod(nameof(string.Substring), [typeof(int), typeof(int)]), startVal, lenVal);
+                    call = Expression.Call(instance, typeof(string).GetMethod(nameof(string.Substring), [typeof(int), typeof(int)])!, startVal, lenVal);
                 }
                 return Expression.Condition(nullGuard, Expression.Constant(null, typeof(string)), call);
             }
@@ -312,7 +312,7 @@ namespace OdataQueryLite.ExpressionBuilding
                 ExpectArgs(node, 2);
                 var a = Build(node.Args[0], typeof(string));
                 var b = Build(node.Args[1], typeof(string));
-                var mi = typeof(string).GetMethod(nameof(string.Concat), [typeof(string), typeof(string)]);
+                var mi = typeof(string).GetMethod(nameof(string.Concat), [typeof(string), typeof(string)])!;
                 var concat = Expression.Call(mi, a, b);
                 var anyNull = Expression.OrElse(
                     Expression.Equal(a, Expression.Constant(null, typeof(string))),
@@ -406,8 +406,10 @@ namespace OdataQueryLite.ExpressionBuilding
                     return Expression.Call(typeof(Enumerable), nameof(Enumerable.Any), [elem], collection);
                 }
 
-                var lambdaParam = Expression.Parameter(elem, node.Param);
-                _lambdaScopes.Push((node.Param, lambdaParam));
+                // `Items/any()` (no-arg) is handled above; reaching here means Param is set.
+                var paramName = node.Param!;
+                var lambdaParam = Expression.Parameter(elem, paramName);
+                _lambdaScopes.Push((paramName, lambdaParam));
                 try
                 {
                     // any/all expect Func<T,bool> — build with bool? so a ParamRef(Null) body

@@ -17,7 +17,7 @@ namespace OdataQueryLite.Permissions
             return path;
         }
 
-        private static void Walk(Expression e, List<PropertyInfo> path)
+        private static void Walk(Expression? e, List<PropertyInfo> path)
         {
             switch (e)
             {
@@ -28,6 +28,10 @@ namespace OdataQueryLite.Permissions
 
                 case ParameterExpression:
                     return;
+
+                case null:
+                    throw new ArgumentException(
+                        "AllowExpand selector body terminated unexpectedly — expected a property-access chain rooted in the lambda parameter.");
 
                 default:
                     throw new ArgumentException(

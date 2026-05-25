@@ -19,24 +19,24 @@ namespace OdataQueryLite
     public sealed class OdataQueryOptions<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] T>
         where T : class
     {
-        private readonly ICompiledQuery<T> _filterCompiled;
-        private readonly FilterParseResult _filterParsed;
-        private readonly OrderByClause _orderByClause;
+        private readonly ICompiledQuery<T>? _filterCompiled;
+        private readonly FilterParseResult? _filterParsed;
+        private readonly OrderByClause? _orderByClause;
 
-        public string RawFilter { get; }
-        public string RawOrderBy { get; }
-        public string RawExpand { get; }
-        public string RawSelect { get; }
+        public string? RawFilter { get; }
+        public string? RawOrderBy { get; }
+        public string? RawExpand { get; }
+        public string? RawSelect { get; }
         public int? Top { get; }
         public int? Skip { get; }
         public bool Count { get; }
 
         // Merged $expand + $select tree. null when neither option was supplied.
-        public ExpandRequestNode Expand { get; }
+        public ExpandRequestNode? Expand { get; }
 
         [RequiresUnreferencedCode("Compiles a filter Expression tree that accesses T's public properties by name; T's properties must be preserved by the trimmer.")]
         [RequiresDynamicCode("Builds Expression<Func<T, bool>> / Func<T, TKey> at runtime; AOT may require dynamic-code support depending on the IQueryable provider.")]
-        public OdataQueryOptions(OdataQueryParts parts, QueryCompileCache cache = null)
+        public OdataQueryOptions(OdataQueryParts parts, QueryCompileCache? cache = null)
         {
             ArgumentNullException.ThrowIfNull(parts);
 
@@ -76,7 +76,7 @@ namespace OdataQueryLite
             if (!string.IsNullOrEmpty(parts.OrderBy))
                 _orderByClause = OrderByParser.Parse(parts.OrderBy);
 
-            ExpandRequestNode expand = null;
+            ExpandRequestNode? expand = null;
             if (!string.IsNullOrEmpty(parts.Expand))
                 expand = ExpandParser.Parse(parts.Expand);
             // OData allows $select at the same level as $expand without nesting it inside.
@@ -93,14 +93,14 @@ namespace OdataQueryLite
 
         [RequiresUnreferencedCode("Delegates to ICompiledQuery<T>.Apply / OrderByApplier.Apply which build Expression trees over T.")]
         [RequiresDynamicCode("Delegates to ICompiledQuery<T>.Apply / OrderByApplier.Apply which compile generic delegates at runtime.")]
-        public QueryResult Apply(IQueryable<T> source, IApplyOptions options = null)
+        public QueryResult Apply(IQueryable<T> source, IApplyOptions? options = null)
         {
             ArgumentNullException.ThrowIfNull(source);
             var opt = options ?? new ApplyOptions();
             var q = source;
 
             if (_filterCompiled is not null)
-                q = _filterCompiled.Apply(q, _filterParsed.Literals);
+                q = _filterCompiled.Apply(q, _filterParsed!.Literals);
 
             // Count is measured on the filtered, pre-paged set so the total reflects what the
             // client could iterate if they paged through everything — matches Microsoft's

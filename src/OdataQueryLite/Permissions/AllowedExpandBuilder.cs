@@ -85,7 +85,7 @@ namespace OdataQueryLite.Permissions
         // generic definitions used by EF Core navigation collections. AOT-clean (no member discovery).
         // Custom collection types that don't inherit from a recognised generic def fall through to
         // null → treated as navigation; register them via the explicit collection overload instead.
-        private static Type GetCollectionElementType(Type t)
+        private static Type? GetCollectionElementType(Type t)
         {
             if (t.IsArray) return t.GetElementType();
             if (t.IsGenericType)

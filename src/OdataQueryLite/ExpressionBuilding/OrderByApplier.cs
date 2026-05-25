@@ -15,7 +15,7 @@ namespace OdataQueryLite.ExpressionBuilding
         [RequiresUnreferencedCode("Resolves Queryable.OrderBy/ThenBy by name via Expression.Call.")]
         [RequiresDynamicCode("Constructs generic Func<T,TKey> lambdas whose TKey is only known at runtime.")]
         public static IQueryable<T> Apply<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] T>(
-            IQueryable<T> source, OrderByClause clause)
+            IQueryable<T> source, OrderByClause? clause)
         {
             ArgumentNullException.ThrowIfNull(source);
             if (clause is null || clause.Items.Count == 0) return source;
@@ -39,6 +39,13 @@ namespace OdataQueryLite.ExpressionBuilding
         {
             var param = Expression.Parameter(typeof(T), "x");
             var body = MemberPathResolver.WalkPath(param, member.Path);
+            // Reject `$orderby=Orders` (an entire collection nav) — OData spec only allows
+            // ordering by single-valued expressions. Without this guard EF Core would attempt
+            // SQL translation of "ORDER BY (ICollection<>)" and the query fails as 500 instead
+            // of the proper 400.
+            if (MemberPathResolver.GetEnumerableElementType(body.Type) is not null)
+                throw new OdataQueryException(
+                    $"Cannot $orderby a collection property; saw '{string.Join('/', member.Path)}'. Use a scalar property or '$count' terminal.");
             var lambdaType = typeof(Func<,>).MakeGenericType(typeof(T), body.Type);
             return (Expression.Lambda(lambdaType, body, param), body.Type);
         }

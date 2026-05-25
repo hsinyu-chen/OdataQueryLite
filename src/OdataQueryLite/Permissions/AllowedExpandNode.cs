@@ -4,13 +4,13 @@ namespace OdataQueryLite.Permissions
 {
     public sealed class AllowedExpandNode
     {
-        private HashSet<string> _allowedSelectFields;
+        private HashSet<string>? _allowedSelectFields;
         private bool _explicitlyUnrestricted;
 
         public Dictionary<string, AllowedExpandNode> ExpandableProperties { get; } = [];
 
         // null = unrestricted (default + after MarkSelectUnrestricted); non-null = restricted to this set.
-        public IReadOnlyCollection<string> AllowedSelectFields => _allowedSelectFields;
+        public IReadOnlyCollection<string>? AllowedSelectFields => _allowedSelectFields;
 
         // Once MarkSelectUnrestricted is called, scalar-leaf AllowExpand additions on this node are ignored —
         // ensures `AllowExpand(x => x.Customer)` and `AllowExpand(x => x.Customer.Name)` produce the same
