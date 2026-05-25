@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using OdataQueryLite.ExpressionBuilding;
 using OdataQueryLite.Parsing;
@@ -81,6 +83,53 @@ namespace OdataQueryLite.Tests
         {
             var source = Rows();
             Assert.Same(source, OrderByApplier.Apply<Customer>(source, null));
+        }
+
+        public sealed class Owner
+        {
+            public int Id { get; set; }
+            public string Label { get; set; }
+            public ICollection<Address> Addresses { get; set; } = new List<Address>();
+        }
+
+        private static IQueryable<Owner> OwnersWithAddressCounts() => new[]
+        {
+            new Owner { Id = 1, Label = "A", Addresses = { new Address { City = "X" }, new Address { City = "Y" } } },
+            new Owner { Id = 2, Label = "B", Addresses = { new Address { City = "X" } } },
+            new Owner { Id = 3, Label = "C", Addresses = { new Address { City = "X" }, new Address { City = "Y" }, new Address { City = "Z" } } },
+        }.AsQueryable();
+
+        [Fact]
+        public void Apply_orderby_collection_count_terminal_sorts_by_count()
+        {
+            var clause = OrderByParser.Parse("Addresses/$count");
+            var ordered = OrderByApplier.Apply(OwnersWithAddressCounts(), clause).ToList();
+            Assert.Equal([2, 1, 3], ordered.Select(o => o.Id));
+        }
+
+        [Fact]
+        public void Apply_orderby_collection_count_desc_supported()
+        {
+            var clause = OrderByParser.Parse("Addresses/$count desc");
+            var ordered = OrderByApplier.Apply(OwnersWithAddressCounts(), clause).ToList();
+            Assert.Equal([3, 1, 2], ordered.Select(o => o.Id));
+        }
+
+        [Fact]
+        public void Apply_count_on_non_collection_throws()
+        {
+            var clause = OrderByParser.Parse("Label/$count");
+            Assert.Throws<ArgumentException>(() => OrderByApplier.Apply(OwnersWithAddressCounts(), clause).ToList());
+        }
+
+        [Fact]
+        public void Apply_count_not_terminal_throws()
+        {
+            // Addresses/$count/Foo — $count must be terminal.
+            var clause = new Ast.OrderByClause([
+                new Ast.OrderByItem(new Ast.MemberNode(["Addresses", "$count", "Foo"]), Ast.OrderByDirection.Ascending)
+            ]);
+            Assert.Throws<ArgumentException>(() => OrderByApplier.Apply(OwnersWithAddressCounts(), clause).ToList());
         }
     }
 }

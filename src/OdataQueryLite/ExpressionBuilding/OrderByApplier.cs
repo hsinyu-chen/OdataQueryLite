@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Linq.Expressions;
@@ -14,7 +15,8 @@ namespace OdataQueryLite.ExpressionBuilding
         // client-side sorting and break the parameterized-SQL contract.
         [RequiresUnreferencedCode("Resolves Queryable.OrderBy/ThenBy by name via Expression.Call.")]
         [RequiresDynamicCode("Constructs generic Func<T,TKey> lambdas whose TKey is only known at runtime.")]
-        public static IQueryable<T> Apply<T>(IQueryable<T> source, OrderByClause clause)
+        public static IQueryable<T> Apply<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] T>(
+            IQueryable<T> source, OrderByClause clause)
         {
             ArgumentNullException.ThrowIfNull(source);
             if (clause is null || clause.Items.Count == 0) return source;
@@ -34,14 +36,44 @@ namespace OdataQueryLite.ExpressionBuilding
 
         [RequiresUnreferencedCode("Expression.PropertyOrField resolves T's members by name; T's properties must be preserved by the trimmer.")]
         [RequiresDynamicCode("Constructs Func<T, TKey> at runtime via Type.MakeGenericType.")]
-        private static (LambdaExpression Lambda, Type KeyType) BuildKeySelector<T>(MemberNode member)
+        private static (LambdaExpression Lambda, Type KeyType) BuildKeySelector<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] T>(MemberNode member)
         {
             var param = Expression.Parameter(typeof(T), "x");
             Expression body = param;
-            foreach (var segment in member.Path)
+            for (int i = 0; i < member.Path.Count; i++)
+            {
+                var segment = member.Path[i];
+                if (segment == "$count")
+                {
+                    if (i != member.Path.Count - 1)
+                        throw new ArgumentException($"$count must be the terminal segment; saw '{string.Join('/', member.Path)}'.");
+                    var elem = GetEnumerableElementType(body.Type)
+                        ?? throw new ArgumentException($"$count target is not enumerable: {body.Type.Name}");
+                    body = Expression.Call(typeof(Enumerable), nameof(Enumerable.Count), [elem], body);
+                    break;
+                }
                 body = Expression.PropertyOrField(body, segment);
+            }
             var lambdaType = typeof(Func<,>).MakeGenericType(typeof(T), body.Type);
             return (Expression.Lambda(lambdaType, body, param), body.Type);
+        }
+
+        // Mirror of FilterExpressionBuilder.GetEnumerableElementType — kept narrow (no
+        // BaseType walk) since OrderBy paths land on entity navigation properties whose
+        // declared type is the BCL collection interface, not a derived class.
+        private static Type GetEnumerableElementType(Type t)
+        {
+            if (t.IsArray) return t.GetElementType();
+            if (!t.IsGenericType) return null;
+            var def = t.GetGenericTypeDefinition();
+            if (def == typeof(IEnumerable<>) || def == typeof(IQueryable<>)
+                || def == typeof(ICollection<>) || def == typeof(IList<>)
+                || def == typeof(IReadOnlyCollection<>) || def == typeof(IReadOnlyList<>)
+                || def == typeof(List<>) || def == typeof(HashSet<>))
+            {
+                return t.GetGenericArguments()[0];
+            }
+            return null;
         }
     }
 }
