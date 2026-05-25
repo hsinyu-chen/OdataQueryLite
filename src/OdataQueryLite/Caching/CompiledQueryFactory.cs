@@ -4,7 +4,9 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Threading;
 using OdataQueryLite.Ast;
+using OdataQueryLite.Diagnostics;
 using OdataQueryLite.ExpressionBuilding;
 
 namespace OdataQueryLite.Caching
@@ -37,6 +39,7 @@ namespace OdataQueryLite.Caching
             private readonly ParameterExpression _argsParam;
             private readonly Expression _body;
             private readonly Type[] _slotTypes;
+            private int _aotWarningEmitted;
 
             public CompiledQuery(ParameterExpression entityParam, ParameterExpression argsParam, Expression body, Type[] slotTypes)
             {
@@ -53,6 +56,16 @@ namespace OdataQueryLite.Caching
                 if (literals.Count != _slotTypes.Length)
                     throw new ArgumentException(
                         $"Literal count {literals.Count} does not match cached shape's slot count {_slotTypes.Length}.");
+
+                // BCL EnumerableQuery under AOT walks the Expression tree per row via the interpreter
+                // (no JIT codegen). Documented anti-pattern: warn once per CompiledQuery instance so
+                // hot paths emit a single trace, not one per Apply call.
+                if (!RuntimeProbe.IsDynamicCodeSupported()
+                    && source.Provider is EnumerableQuery
+                    && Interlocked.CompareExchange(ref _aotWarningEmitted, 1, 0) == 0)
+                {
+                    OdataQueryLiteEventSource.Log.AotInMemoryProviderDetected(typeof(T).FullName);
+                }
 
                 // No literals — _body holds no references to _argsParam, so we can skip the
                 // ArgsSubstitutor traversal entirely and reuse _body as the lambda body.
