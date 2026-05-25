@@ -69,10 +69,18 @@ namespace OdataQueryLite.ExpressionBuilding
                 _ => throw new NotSupportedException($"Unsupported filter node: {node.GetType().Name}")
             };
 
+            // AndAlso/OrElse/Not require matching operand types. Bool-returning subexpressions
+            // (nullable members, lifted comparisons) come through as bool? — collapse to bool
+            // at the boundary, per the PR-wide "null → false" convention.
+            private static Expression CoerceToBool(Expression e) =>
+                e.Type == typeof(bool?)
+                    ? Expression.Equal(e, Expression.Constant(true, typeof(bool?)), liftToNull: false, method: null)
+                    : e;
+
             private BinaryExpression BuildBinary(BinaryNode node)
             {
-                if (node.Op == BinaryOp.And) return Expression.AndAlso(Build(node.Left, typeof(bool)), Build(node.Right, typeof(bool)));
-                if (node.Op == BinaryOp.Or) return Expression.OrElse(Build(node.Left, typeof(bool)), Build(node.Right, typeof(bool)));
+                if (node.Op == BinaryOp.And) return Expression.AndAlso(CoerceToBool(Build(node.Left, typeof(bool))), CoerceToBool(Build(node.Right, typeof(bool))));
+                if (node.Op == BinaryOp.Or) return Expression.OrElse(CoerceToBool(Build(node.Left, typeof(bool))), CoerceToBool(Build(node.Right, typeof(bool))));
 
                 // Pre-build MemberNode operands so the BuildMember reflection walk runs once
                 // per side. Other node kinds resolve their slot type without expression work.
@@ -245,7 +253,12 @@ namespace OdataQueryLite.ExpressionBuilding
                 var arg = Build(node.Args[1], typeof(string));
                 var mi = typeof(string).GetMethod(method, [typeof(string)])
                     ?? throw new InvalidOperationException($"string.{method}(string) not found.");
-                return GuardStringNull(instance, Expression.Call(instance, mi, arg), Expression.Constant(false));
+                // BCL Contains/StartsWith/EndsWith throw ArgumentNullException on a null arg.
+                // Per OData v4 a null function arg yields null; we collapse to false in the
+                // outer compare context, consistent with the rest of the string-null guards.
+                return Expression.Condition(EitherStringNull(instance, arg),
+                    Expression.Constant(false),
+                    Expression.Call(instance, mi, arg));
             }
 
             private ConditionalExpression StringIndexOfCall(FunctionNode node)
@@ -258,8 +271,15 @@ namespace OdataQueryLite.ExpressionBuilding
                 // IndexOf returns int — lift to int? so the null-guard's true/false branches match
                 // and so callers comparing the result use the nullable slot type.
                 var call = Expression.Convert(Expression.Call(instance, mi, arg), typeof(int?));
-                return GuardStringNull(instance, call, Expression.Constant(null, typeof(int?)));
+                return Expression.Condition(EitherStringNull(instance, arg),
+                    Expression.Constant(null, typeof(int?)),
+                    call);
             }
+
+            private static BinaryExpression EitherStringNull(Expression a, Expression b) =>
+                Expression.OrElse(
+                    Expression.Equal(a, Expression.Constant(null, typeof(string))),
+                    Expression.Equal(b, Expression.Constant(null, typeof(string))));
 
             private ConditionalExpression StringInstance(FunctionNode node, string method)
             {

@@ -443,6 +443,30 @@ namespace OdataQueryLite.Tests
         }
 
         [Fact]
+        public void And_or_of_nullable_bool_members_compiles_and_collapses_to_false_on_null()
+        {
+            // AndAlso/OrElse over bool? operands: lifted result is bool?, top-level fix
+            // collapses to bool. Mixed bool / bool? operands must also compose without
+            // ArgumentException at Expression construction.
+            Assert.True(Compile<Customer>("IsActive and IsActive").Match(new Customer { IsActive = true }));
+            Assert.False(Compile<Customer>("IsActive and IsActive").Match(new Customer { IsActive = null }));
+            Assert.True(Compile<Customer>("IsActive or (Age gt 30)").Match(new Customer { IsActive = null, Age = 40 }));
+            Assert.False(Compile<Customer>("IsActive or (Age gt 30)").Match(new Customer { IsActive = null, Age = 20 }));
+        }
+
+        [Fact]
+        public void Contains_with_null_string_arg_collapses_to_false_per_spec()
+        {
+            // ParamRef null packed as string at the arg slot must not reach BCL Contains —
+            // string.Contains(null) throws ArgumentNullException. Per OData v4, the function
+            // returns null (silently false in the outer compare).
+            Assert.False(Compile<Customer>("contains(Name, null)").Match(new Customer { Name = "Alice" }));
+            Assert.False(Compile<Customer>("startswith(Name, null)").Match(new Customer { Name = "Alice" }));
+            Assert.False(Compile<Customer>("endswith(Name, null)").Match(new Customer { Name = "Alice" }));
+            Assert.False(Compile<Customer>("indexof(Name, null) eq 0").Match(new Customer { Name = "Alice" }));
+        }
+
+        [Fact]
         public void Bare_nullable_bool_member_compiles_and_treats_null_as_false()
         {
             // Body type would be bool? if Equal lifted to nullable; Lambda<Func<T,bool>>
