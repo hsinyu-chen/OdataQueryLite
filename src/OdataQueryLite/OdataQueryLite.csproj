@@ -18,4 +18,8 @@
     <PackageTags>odata;query;parser;filter;expression</PackageTags>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="OdataQueryLite.Tests" />
+  </ItemGroup>
+
 </Project>
