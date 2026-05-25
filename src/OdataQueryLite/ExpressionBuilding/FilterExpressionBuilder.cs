@@ -38,7 +38,8 @@ namespace OdataQueryLite.ExpressionBuilding
             if (body.Type == typeof(bool?))
                 body = Expression.Equal(body, Expression.Constant(true, typeof(bool?)), liftToNull: false, method: null);
             else if (body.Type != typeof(bool))
-                body = Expression.Equal(body, Expression.Constant(true));
+                throw new ArgumentException(
+                    $"Filter expression must evaluate to a boolean; got {body.Type.Name}.", nameof(parsed));
             return new BuiltFilter(body, ctx.SlotTypes);
         }
 

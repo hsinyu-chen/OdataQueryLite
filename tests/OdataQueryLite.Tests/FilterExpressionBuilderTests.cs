@@ -432,6 +432,17 @@ namespace OdataQueryLite.Tests
         }
 
         [Fact]
+        public void Non_boolean_filter_body_throws_clear_message()
+        {
+            // Per OData v4 a $filter expression must evaluate to bool. A bare non-bool member
+            // (e.g. `filter=Name`) used to fail with an inner Expression.Equal "operator not
+            // defined" — confusing for callers. Surface the spec contract directly.
+            var ex = Assert.Throws<ArgumentException>(() => Compile<Customer>("Name"));
+            Assert.Contains("boolean", ex.Message);
+            Assert.Contains("String", ex.Message);
+        }
+
+        [Fact]
         public void Bare_nullable_bool_member_compiles_and_treats_null_as_false()
         {
             // Body type would be bool? if Equal lifted to nullable; Lambda<Func<T,bool>>
