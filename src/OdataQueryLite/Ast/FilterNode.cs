@@ -22,8 +22,6 @@ namespace OdataQueryLite.Ast
 
     public enum LambdaOp { Any, All }
 
-    public sealed record LiteralNode(object Value, LiteralKind Kind) : FilterNode;
-
     public sealed record ParamRefNode(int Index, LiteralKind Kind) : FilterNode;
 
     public enum BinaryOp { Eq, Ne, Gt, Ge, Lt, Le, And, Or }

@@ -99,9 +99,8 @@ namespace OdataQueryLite.Tests
         [Fact]
         public void Nav_leaf_before_scalar_leaf_keeps_node_unrestricted()
         {
-            // Regression: broader wins. AllowExpand(x => x.LatestOrder) declares Customer's LatestOrder
-            // fully expandable; a subsequent AllowExpand(x => x.LatestOrder.Quantity) must NOT silently
-            // narrow it to {"Quantity"}.
+            // Broader wins. A nav-leaf call declares the whole sub-tree expandable; a later
+            // scalar call on a descendant must not silently narrow the parent's select set.
             var node = new AllowedExpandBuilder<Customer>()
                 .AllowExpand(x => x.LatestOrder)
                 .AllowExpand(x => x.LatestOrder.Quantity)
@@ -128,7 +127,7 @@ namespace OdataQueryLite.Tests
         [Fact]
         public void Byte_array_property_is_treated_as_scalar_select_field()
         {
-            // Regression: byte[] is OData Edm.Binary (scalar), not a navigation.
+            // byte[] is OData Edm.Binary — a scalar, not a navigation.
             var node = new AllowedExpandBuilder<Customer>()
                 .AllowExpand(x => x.LatestOrder.Product.Photo)
                 .Build();
@@ -141,8 +140,7 @@ namespace OdataQueryLite.Tests
         [Fact]
         public void Collection_of_primitive_is_treated_as_scalar_select_field()
         {
-            // Regression: List<int> / string[] are structural properties (OData $select),
-            // not navigations — they must not turn into ExpandableProperties nodes.
+            // Collections of primitives are structural OData $select fields, not navigations.
             var node = new AllowedExpandBuilder<Customer>()
                 .AllowExpand(x => x.LatestOrder.Product.Ratings)
                 .AllowExpand(x => x.LatestOrder.Product.Tags)

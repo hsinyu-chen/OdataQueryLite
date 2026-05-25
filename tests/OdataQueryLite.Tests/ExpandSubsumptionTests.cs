@@ -83,8 +83,8 @@ namespace OdataQueryLite.Tests
         [Fact]
         public void Request_without_select_against_restricted_allowed_is_rejected()
         {
-            // Regression: previously the missing $select bypassed the whitelist entirely,
-            // returning every field while the whitelist intended to restrict to {"Name"}.
+            // A restricted allow side requires the request to explicitly $select — a missing
+            // $select means "return every field", which would violate the whitelist.
             var request = new ExpandRequestNode(); // SelectedFields == null
             var allowed = new AllowedExpandNode();
             allowed.AddAllowedSelect("Name");

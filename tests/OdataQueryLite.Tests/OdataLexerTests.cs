@@ -6,9 +6,9 @@ namespace OdataQueryLite.Tests
 {
     public class OdataLexerTests
     {
-        // Regression: '$' is IsIdentifierStart but not IsIdentifierPart — early version of
-        // ReadIdentifierOrKeyword had the while-loop exit without consuming any char, causing
-        // the outer Tokenize loop to spin on the same position forever (50GB testhost leak).
+        // '$' is IsIdentifierStart but not IsIdentifierPart. ReadIdentifierOrKeyword must
+        // unconditionally consume at least one character or the outer Tokenize loop spins
+        // on the same position forever for a lone '$' input.
         [Theory]
         [InlineData("$", 2)]            // Identifier("$") + EOF
         [InlineData("$$", 3)]           // Identifier("$") x2 + EOF
