@@ -393,6 +393,21 @@ namespace OdataQueryLite.Tests
         }
 
         [Fact]
+        public void Comparison_of_bool_returning_subexpression_uses_value_equality()
+        {
+            // Regression: TryResolveOperandSlotType previously returned null for
+            // BinaryNode / UnaryNode / LambdaCollectionNode, so the slot fell back to
+            // typeof(object), boxing both bool sides and doing reference equality.
+            var any = Compile<Customer>("Orders/any() eq true");
+            Assert.True(any.Match(new Customer { Orders = { new Order() } }));
+            Assert.False(any.Match(new Customer { Orders = new List<Order>() }));
+
+            var neg = Compile<Customer>("(Name eq 'A') eq false");
+            Assert.True(neg.Match(new Customer { Name = "B" }));
+            Assert.False(neg.Match(new Customer { Name = "A" }));
+        }
+
+        [Fact]
         public void IndexOf_returns_int_and_null_member_propagates_null()
         {
             // Regression: IndexOf returns int. Before this fix the null-guard's true/false

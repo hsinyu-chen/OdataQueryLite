@@ -92,6 +92,10 @@ namespace OdataQueryLite.ExpressionBuilding
             {
                 MemberNode m => TypeCoercion.SlotTypeFor(BuildMember(m.Path).Type),
                 FunctionNode f => TypeCoercion.SlotTypeFor(FunctionReturnType(f.Name)),
+                // Bool-returning nodes — without these, `(A eq B) eq true` and
+                // `Items/any() eq false` fall through to typeof(object), box the bool, and
+                // do reference equality instead of value equality.
+                BinaryNode or UnaryNode or LambdaCollectionNode => typeof(bool?),
                 _ => null
             };
 
