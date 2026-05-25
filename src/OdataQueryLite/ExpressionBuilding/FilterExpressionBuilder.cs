@@ -68,19 +68,26 @@ namespace OdataQueryLite.ExpressionBuilding
                 if (node.Op == BinaryOp.And) return Expression.AndAlso(Build(node.Left, typeof(bool)), Build(node.Right, typeof(bool)));
                 if (node.Op == BinaryOp.Or) return Expression.OrElse(Build(node.Left, typeof(bool)), Build(node.Right, typeof(bool)));
 
-                // Comparison: pick slot type from the non-ParamRef side first.
-                var leftSlot = TryResolveOperandSlotType(node.Left);
-                var rightSlot = TryResolveOperandSlotType(node.Right);
+                // Pre-build MemberNode operands so the BuildMember reflection walk runs once
+                // per side. Other node kinds resolve their slot type without expression work.
+                var preLeft = node.Left is MemberNode lm ? BuildMember(lm.Path) : null;
+                var preRight = node.Right is MemberNode rm ? BuildMember(rm.Path) : null;
+
+                var leftSlot = preLeft != null
+                    ? TypeCoercion.SlotTypeFor(preLeft.Type)
+                    : TryResolveOperandSlotType(node.Left);
+                var rightSlot = preRight != null
+                    ? TypeCoercion.SlotTypeFor(preRight.Type)
+                    : TryResolveOperandSlotType(node.Right);
                 var slot = leftSlot ?? rightSlot ?? typeof(object);
 
-                var left = TypeCoercion.LiftToSlotType(Build(node.Left, slot), slot);
-                var right = TypeCoercion.LiftToSlotType(Build(node.Right, slot), slot);
+                var left = TypeCoercion.LiftToSlotType(preLeft ?? Build(node.Left, slot), slot);
+                var right = TypeCoercion.LiftToSlotType(preRight ?? Build(node.Right, slot), slot);
                 return EmitCompare(node.Op, left, right);
             }
 
-            private Type TryResolveOperandSlotType(FilterNode operand) => operand switch
+            private static Type TryResolveOperandSlotType(FilterNode operand) => operand switch
             {
-                MemberNode m => TypeCoercion.SlotTypeFor(BuildMember(m.Path).Type),
                 FunctionNode f => TypeCoercion.SlotTypeFor(FunctionReturnType(f.Name)),
                 // Bool-returning nodes — without these, `(A eq B) eq true` and
                 // `Items/any() eq false` fall through to typeof(object), box the bool, and
