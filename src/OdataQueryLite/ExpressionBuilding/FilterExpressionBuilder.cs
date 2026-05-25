@@ -314,10 +314,7 @@ namespace OdataQueryLite.ExpressionBuilding
                 var b = Build(node.Args[1], typeof(string));
                 var mi = typeof(string).GetMethod(nameof(string.Concat), [typeof(string), typeof(string)])!;
                 var concat = Expression.Call(mi, a, b);
-                var anyNull = Expression.OrElse(
-                    Expression.Equal(a, Expression.Constant(null, typeof(string))),
-                    Expression.Equal(b, Expression.Constant(null, typeof(string))));
-                return Expression.Condition(anyNull, Expression.Constant(null, typeof(string)), concat);
+                return Expression.Condition(EitherStringNull(a, b), Expression.Constant(null, typeof(string)), concat);
             }
 
             private Expression DateProperty(FunctionNode node, string property)

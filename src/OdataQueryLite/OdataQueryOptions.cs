@@ -85,6 +85,9 @@ namespace OdataQueryLite
             if (!string.IsNullOrEmpty(parts.Select))
             {
                 var fromSelect = ExpandParser.ParseSelect(parts.Select);
+                // Invariant: ExpandParser.Parse never assigns root-level SelectedFields (only the
+                // nested $select inside $expand(...) does), so this overwrite is always against
+                // null. Switching to a UnionWith would be valid but isn't needed today.
                 if (expand is null) expand = fromSelect;
                 else expand.SelectedFields = fromSelect.SelectedFields;
             }
