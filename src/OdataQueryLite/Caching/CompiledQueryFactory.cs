@@ -59,9 +59,11 @@ namespace OdataQueryLite.Caching
 
                 // BCL EnumerableQuery under AOT walks the Expression tree per row via the interpreter
                 // (no JIT codegen). Documented anti-pattern: warn once per CompiledQuery instance so
-                // hot paths emit a single trace, not one per Apply call.
-                if (!RuntimeProbe.IsDynamicCodeSupported()
+                // hot paths emit a single trace, not one per Apply call. Volatile read first so the
+                // post-emission steady state pays only a load (no Interlocked CAS / memory barrier).
+                if (!RuntimeProbe.IsDynamicCodeSupported
                     && source.Provider is EnumerableQuery
+                    && Volatile.Read(ref _aotWarningEmitted) == 0
                     && Interlocked.CompareExchange(ref _aotWarningEmitted, 1, 0) == 0)
                 {
                     OdataQueryLiteEventSource.Log.AotInMemoryProviderDetected(typeof(T).FullName);

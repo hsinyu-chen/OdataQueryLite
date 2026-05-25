@@ -1,12 +1,12 @@
-using System;
 using System.Runtime.CompilerServices;
 
 namespace OdataQueryLite.Diagnostics
 {
     internal static class RuntimeProbe
     {
-        // Indirection over RuntimeFeature.IsDynamicCodeSupported so tests can simulate the
-        // AOT branch (where the static returns true) without an actual NativeAOT publish.
-        internal static Func<bool> IsDynamicCodeSupported = static () => RuntimeFeature.IsDynamicCodeSupported;
+        // Plain static bool over Func<bool> so the JIT/AOT call site is a single field
+        // load — no delegate dispatch on the hot Apply path. Tests assign this directly
+        // (via InternalsVisibleTo) to simulate the AOT branch without a NativeAOT publish.
+        internal static bool IsDynamicCodeSupported = RuntimeFeature.IsDynamicCodeSupported;
     }
 }

@@ -56,7 +56,7 @@ namespace OdataQueryLite.Tests
         private static IDisposable SimulateAot()
         {
             var prev = RuntimeProbe.IsDynamicCodeSupported;
-            RuntimeProbe.IsDynamicCodeSupported = static () => false;
+            RuntimeProbe.IsDynamicCodeSupported = false;
             return new RestoreOnDispose(() => RuntimeProbe.IsDynamicCodeSupported = prev);
         }
 
@@ -136,7 +136,11 @@ namespace OdataQueryLite.Tests
 
             public IQueryable CreateQuery(Expression expression) => items.AsQueryable();
             public IQueryable<TResult> CreateQuery<TResult>(Expression expression)
-                => (IQueryable<TResult>)(object)new FakeQueryable<T>(items);
+            {
+                if (typeof(TResult) != typeof(T))
+                    throw new NotSupportedException($"FakeQueryable does not support projections to {typeof(TResult).Name}.");
+                return (IQueryable<TResult>)(object)new FakeQueryable<T>(items);
+            }
             public object Execute(Expression expression) => items;
             public TResult Execute<TResult>(Expression expression) => (TResult)(object)items;
 
