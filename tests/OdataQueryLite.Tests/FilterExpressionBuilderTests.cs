@@ -440,7 +440,7 @@ namespace OdataQueryLite.Tests
             // Per OData v4 a $filter expression must evaluate to bool. A bare non-bool member
             // (e.g. `filter=Name`) used to fail with an inner Expression.Equal "operator not
             // defined" — confusing for callers. Surface the spec contract directly.
-            var ex = Assert.Throws<ArgumentException>(() => Compile<Customer>("Name"));
+            var ex = Assert.Throws<OdataQueryException>(() => Compile<Customer>("Name"));
             Assert.Contains("boolean", ex.Message);
             Assert.Contains("String", ex.Message);
         }

@@ -4,7 +4,7 @@ using System.Text;
 
 namespace OdataQueryLite.Parsing
 {
-    public sealed class FilterSyntaxException(string message, int position) : Exception($"{message} (position {position})")
+    public sealed class FilterSyntaxException(string message, int position) : OdataQueryException($"{message} (position {position})")
     {
         public int Position { get; } = position;
     }

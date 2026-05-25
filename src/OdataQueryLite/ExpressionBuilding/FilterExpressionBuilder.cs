@@ -38,8 +38,8 @@ namespace OdataQueryLite.ExpressionBuilding
             if (body.Type == typeof(bool?))
                 body = BuildContext.CoerceToBool(body);
             else if (body.Type != typeof(bool))
-                throw new ArgumentException(
-                    $"Filter expression must evaluate to a boolean; got {body.Type.Name}.", nameof(parsed));
+                throw new OdataQueryException(
+                    $"Filter expression must evaluate to a boolean; got {body.Type.Name}.");
             return new BuiltFilter(body, ctx.SlotTypes);
         }
 
@@ -296,7 +296,7 @@ namespace OdataQueryLite.ExpressionBuilding
             private ConditionalExpression SubstringCall(FunctionNode node)
             {
                 if (node.Args.Count is not (2 or 3))
-                    throw new ArgumentException($"substring expects 2 or 3 args; got {node.Args.Count}.");
+                    throw new OdataQueryException($"substring expects 2 or 3 args; got {node.Args.Count}.");
                 var instance = Build(node.Args[0], typeof(string));
                 // Numeric args go through SlotTypeFor (int?) so a ParamRef slot stays nullable
                 // in line with every other arg site; unwrap back to int for the BCL signature.
@@ -344,7 +344,7 @@ namespace OdataQueryLite.ExpressionBuilding
                 // DateOnly maps to Edm.Date per OData v4; only Year/Month/Day are valid on it
                 // (Hour/Minute/Second have no source property and throw via reflection lookup).
                 if (effective != typeof(DateTime) && effective != typeof(DateTimeOffset) && effective != typeof(DateOnly))
-                    throw new ArgumentException($"Date function expects DateTime/DateTimeOffset/DateOnly; got {operand.Type.Name}.");
+                    throw new OdataQueryException($"Date function expects DateTime/DateTimeOffset/DateOnly; got {operand.Type.Name}.");
 
                 if (underlying != null)
                     return IfNullableHasValue(operand, value => Expression.Property(value, property), typeof(int?));
@@ -362,7 +362,7 @@ namespace OdataQueryLite.ExpressionBuilding
                 // avoid lossy double conversion for decimal columns (money fields, etc).
                 Type mathArg = effective == typeof(decimal) ? typeof(decimal)
                     : effective == typeof(double) || effective == typeof(float) ? typeof(double)
-                    : throw new ArgumentException($"Math.{method} expects decimal / double / float; got {effective.Name}.");
+                    : throw new OdataQueryException($"Math.{method} expects decimal / double / float; got {effective.Name}.");
 
                 var mi = typeof(Math).GetMethod(method, [mathArg])
                     ?? throw new InvalidOperationException($"Math.{method}({mathArg.Name}) not found.");
@@ -395,7 +395,7 @@ namespace OdataQueryLite.ExpressionBuilding
             private static void ExpectArgs(FunctionNode node, int count)
             {
                 if (node.Args.Count != count)
-                    throw new ArgumentException($"{node.Name} expects {count} arg(s); got {node.Args.Count}.");
+                    throw new OdataQueryException($"{node.Name} expects {count} arg(s); got {node.Args.Count}.");
             }
 
             private static Type FunctionReturnType(FunctionName fn) => fn switch
