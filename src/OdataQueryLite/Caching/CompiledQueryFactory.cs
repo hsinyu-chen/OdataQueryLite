@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Reflection;
 using OdataQueryLite.Ast;
 using OdataQueryLite.ExpressionBuilding;
 
@@ -51,7 +52,7 @@ namespace OdataQueryLite.Caching
                     throw new ArgumentException(
                         $"Literal count {literals.Count} does not match cached shape's slot count {_slotTypes.Length}.");
 
-                var args = new object[_slotTypes.Length];
+                var args = _slotTypes.Length == 0 ? Array.Empty<object>() : new object[_slotTypes.Length];
                 for (int i = 0; i < _slotTypes.Length; i++)
                     args[i] = TypeCoercion.Coerce(literals[i].Value, literals[i].Kind, _slotTypes[i]);
 
@@ -61,19 +62,32 @@ namespace OdataQueryLite.Caching
             }
         }
 
+        // EF Core inlines Expression.Constant values into the generated SQL, polluting the
+        // plan cache. Wrapping in a closure-like instance and substituting argsParam with
+        // Expression.Field(Constant(closure), ValuesField) makes EF Core treat the array
+        // as a captured value and parameterize it (`@p0`) instead.
+        private sealed class ArgsClosure
+        {
+            public object[] Values;
+        }
+
+        private static readonly FieldInfo _valuesField =
+            typeof(ArgsClosure).GetField(nameof(ArgsClosure.Values));
+
         private sealed class ArgsSubstitutor : ExpressionVisitor
         {
             private readonly ParameterExpression _argsParam;
-            private readonly ConstantExpression _argsConstant;
+            private readonly MemberExpression _argsAccess;
 
             public ArgsSubstitutor(ParameterExpression argsParam, object[] args)
             {
                 _argsParam = argsParam;
-                _argsConstant = Expression.Constant(args, typeof(object[]));
+                var closure = new ArgsClosure { Values = args };
+                _argsAccess = Expression.Field(Expression.Constant(closure), _valuesField);
             }
 
             protected override Expression VisitParameter(ParameterExpression node)
-                => node == _argsParam ? _argsConstant : base.VisitParameter(node);
+                => node == _argsParam ? _argsAccess : base.VisitParameter(node);
         }
     }
 }
