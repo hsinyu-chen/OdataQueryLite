@@ -48,6 +48,8 @@ namespace OdataQueryLite.Caching
 
             public IQueryable<T> Apply(IQueryable<T> source, IReadOnlyList<LiteralValue> literals)
             {
+                ArgumentNullException.ThrowIfNull(source);
+                ArgumentNullException.ThrowIfNull(literals);
                 if (literals.Count != _slotTypes.Length)
                     throw new ArgumentException(
                         $"Literal count {literals.Count} does not match cached shape's slot count {_slotTypes.Length}.");
