@@ -32,7 +32,12 @@ namespace OdataQueryLite.ExpressionBuilding
 
             var ctx = new BuildContext(typeof(T), entityParam, argsParam, parsed.Literals);
             var body = ctx.Build(parsed.Ast, expectedType: typeof(bool));
-            if (body.Type != typeof(bool))
+            // bool? body (e.g. bare nullable-bool member or lifted comparison) — match the
+            // constant's type and force liftToNull=false so null collapses to false per
+            // OData v4's null-comparison rule, yielding a Func<T,bool> result type.
+            if (body.Type == typeof(bool?))
+                body = Expression.Equal(body, Expression.Constant(true, typeof(bool?)), liftToNull: false, method: null);
+            else if (body.Type != typeof(bool))
                 body = Expression.Equal(body, Expression.Constant(true));
             return new BuiltFilter(body, ctx.SlotTypes);
         }

@@ -35,6 +35,7 @@ namespace OdataQueryLite.Tests
             public DateTimeOffset? LastSeenAt { get; set; }
             public DateOnly BirthDate { get; set; }
             public DateOnly? AnniversaryDate { get; set; }
+            public bool? IsActive { get; set; }
             public ICollection<Order> Orders { get; set; } = new List<Order>();
             public Status PrimaryStatus { get; set; }
         }
@@ -428,6 +429,17 @@ namespace OdataQueryLite.Tests
             Assert.Equal(typeof(int?), c.SlotTypes[0]);
             Assert.True(c.Match(new Customer { Name = "Alice" }));
             Assert.False(c.Match(new Customer { Name = "Bob" }));
+        }
+
+        [Fact]
+        public void Bare_nullable_bool_member_compiles_and_treats_null_as_false()
+        {
+            // Body type would be bool? if Equal lifted to nullable; Lambda<Func<T,bool>>
+            // creation would then throw on type mismatch. The top-level Equal must collapse
+            // to bool (treating null as false per OData spec).
+            Assert.True(Compile<Customer>("IsActive").Match(new Customer { IsActive = true }));
+            Assert.False(Compile<Customer>("IsActive").Match(new Customer { IsActive = false }));
+            Assert.False(Compile<Customer>("IsActive").Match(new Customer { IsActive = null }));
         }
 
         [Fact]
