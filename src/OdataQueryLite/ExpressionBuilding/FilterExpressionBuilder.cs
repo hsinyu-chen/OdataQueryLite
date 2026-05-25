@@ -30,13 +30,12 @@ namespace OdataQueryLite.ExpressionBuilding
             if (argsParam.Type != typeof(object[]))
                 throw new ArgumentException($"argsParam type {argsParam.Type} must be object[].", nameof(argsParam));
 
-            var ctx = new BuildContext(typeof(T), entityParam, argsParam, parsed.Literals);
+            var ctx = new BuildContext(entityParam, argsParam, parsed.Literals);
             var body = ctx.Build(parsed.Ast, expectedType: typeof(bool));
-            // bool? body (e.g. bare nullable-bool member or lifted comparison) — match the
-            // constant's type and force liftToNull=false so null collapses to false per
-            // OData v4's null-comparison rule, yielding a Func<T,bool> result type.
+            // bool? body (e.g. bare nullable-bool member or lifted comparison) collapses to
+            // bool via the shared CoerceToBool helper so this matches the AndAlso/OrElse path.
             if (body.Type == typeof(bool?))
-                body = Expression.Equal(body, Expression.Constant(true, typeof(bool?)), liftToNull: false, method: null);
+                body = BuildContext.CoerceToBool(body);
             else if (body.Type != typeof(bool))
                 throw new ArgumentException(
                     $"Filter expression must evaluate to a boolean; got {body.Type.Name}.", nameof(parsed));
@@ -48,9 +47,8 @@ namespace OdataQueryLite.ExpressionBuilding
         // so the analyzer treats every method body as part of the same contract chain.
         [RequiresUnreferencedCode("Resolves entity properties by name via reflection.")]
         [RequiresDynamicCode("Constructs LINQ Expression trees and instantiates generic methods.")]
-        private sealed class BuildContext(Type entityType, ParameterExpression entity, ParameterExpression args, IReadOnlyList<LiteralValue> literals)
+        private sealed class BuildContext(ParameterExpression entity, ParameterExpression args, IReadOnlyList<LiteralValue> literals)
         {
-            private readonly Type _entityType = entityType;
             private readonly ParameterExpression _entity = entity;
             private readonly ParameterExpression _args = args;
             private readonly IReadOnlyList<LiteralValue> _literals = literals;
@@ -69,10 +67,11 @@ namespace OdataQueryLite.ExpressionBuilding
                 _ => throw new NotSupportedException($"Unsupported filter node: {node.GetType().Name}")
             };
 
-            // AndAlso/OrElse/Not require matching operand types. Bool-returning subexpressions
-            // (nullable members, lifted comparisons) come through as bool? — collapse to bool
-            // at the boundary, per the PR-wide "null → false" convention.
-            private static Expression CoerceToBool(Expression e) =>
+            // AndAlso/OrElse/Not/lambda-bodies/top-level filter all require non-nullable bool;
+            // bool? subexpressions (nullable members, lifted comparisons) collapse here per
+            // the PR-wide "null → false" convention. Public so the static Build<T> entrypoint
+            // can reuse the same collapse instead of duplicating the Equal-to-true(bool?) form.
+            public static Expression CoerceToBool(Expression e) =>
                 e.Type == typeof(bool?)
                     ? Expression.Equal(e, Expression.Constant(true, typeof(bool?)), liftToNull: false, method: null)
                     : e;
@@ -455,7 +454,9 @@ namespace OdataQueryLite.ExpressionBuilding
                 _lambdaScopes.Push((node.Param, lambdaParam));
                 try
                 {
-                    var body = Build(node.Body, typeof(bool));
+                    // any/all expect Func<T,bool> — collapse bool? bodies (nullable-bool
+                    // member, lifted comparison) so Enumerable.Any/All binds correctly.
+                    var body = CoerceToBool(Build(node.Body, typeof(bool)));
                     var lambda = Expression.Lambda(body, lambdaParam);
                     var method = node.Op == LambdaOp.Any ? nameof(Enumerable.Any) : nameof(Enumerable.All);
                     return Expression.Call(typeof(Enumerable), method, [elem], collection, lambda);

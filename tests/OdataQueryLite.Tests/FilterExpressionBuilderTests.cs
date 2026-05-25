@@ -445,6 +445,26 @@ namespace OdataQueryLite.Tests
             Assert.Contains("String", ex.Message);
         }
 
+        public sealed class Subscription
+        {
+            public bool? Active { get; set; }
+        }
+        public sealed class Account
+        {
+            public ICollection<Subscription> Subscriptions { get; set; } = new List<Subscription>();
+        }
+
+        [Fact]
+        public void Lambda_any_body_collapses_nullable_bool_to_bool_for_func_signature()
+        {
+            // Without CoerceToBool on the lambda body, `Subscriptions/any(s: s/Active)`
+            // would build Func<Subscription, bool?> and Enumerable.Any wouldn't bind.
+            var a = new Account { Subscriptions = new List<Subscription> { new() { Active = true } } };
+            var b = new Account { Subscriptions = new List<Subscription> { new() { Active = null } } };
+            Assert.True(Compile<Account>("Subscriptions/any(s: s/Active)").Match(a));
+            Assert.False(Compile<Account>("Subscriptions/any(s: s/Active)").Match(b));
+        }
+
         [Fact]
         public void Int_member_eq_25_fractional_literal_should_not_match_id_2()
         {
