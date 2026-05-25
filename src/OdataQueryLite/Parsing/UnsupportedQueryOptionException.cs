@@ -1,9 +1,7 @@
-using System;
-
 namespace OdataQueryLite.Parsing
 {
     public sealed class UnsupportedQueryOptionException(string optionName, string message)
-        : Exception(message)
+        : OdataQueryException(message)
     {
         public string OptionName { get; } = optionName;
     }

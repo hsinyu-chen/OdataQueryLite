@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Linq.Expressions;
-using System.Reflection;
 using OdataQueryLite.Ast;
 
 namespace OdataQueryLite.ExpressionBuilding
@@ -192,49 +191,15 @@ namespace OdataQueryLite.ExpressionBuilding
                     if (seg == "$count")
                     {
                         if (i != path.Count - 1)
-                            throw new ArgumentException($"$count must be the terminal segment; saw '{string.Join('/', path)}'.");
-                        var elem = GetEnumerableElementType(cursor.Type)
-                            ?? throw new ArgumentException($"$count target is not enumerable: {cursor.Type.Name}");
+                            throw new OdataQueryException($"$count must be the terminal segment; saw '{string.Join('/', path)}'.");
+                        var elem = MemberPathResolver.GetEnumerableElementType(cursor.Type)
+                            ?? throw new OdataQueryException($"$count target is not enumerable: {cursor.Type.Name}");
                         cursor = Expression.Call(typeof(Enumerable), nameof(Enumerable.Count), [elem], cursor);
                         return cursor;
                     }
-                    var prop = ResolveProperty(cursor.Type, seg);
-                    cursor = Expression.Property(cursor, prop);
+                    cursor = Expression.Property(cursor, MemberPathResolver.ResolveProperty(cursor.Type, seg));
                 }
                 return cursor;
-            }
-
-            private static PropertyInfo ResolveProperty(
-                [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] Type t,
-                string name)
-            {
-                var pi = t.GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
-                if (pi != null) return pi;
-                var available = string.Join(", ", t.GetProperties(BindingFlags.Public | BindingFlags.Instance).Select(p => p.Name));
-                throw new ArgumentException(
-                    $"Property '{name}' not found on type '{t.Name}'. Available: {available}.");
-            }
-
-            // Walks the BaseType chain to catch custom collections (`class MyOrders : List<Order>`)
-            // — `t.IsGenericType` is false for those, but List<Order> is in the inheritance chain.
-            // Stays AOT-clean by avoiding GetInterfaces().
-            private static Type GetEnumerableElementType(Type t)
-            {
-                if (t.IsArray) return t.GetElementType();
-                for (var c = t; c != null; c = c.BaseType)
-                {
-                    if (!c.IsGenericType) continue;
-                    var def = c.GetGenericTypeDefinition();
-                    if (def == typeof(IEnumerable<>) || def == typeof(IQueryable<>)
-                        || def == typeof(ICollection<>) || def == typeof(IList<>)
-                        || def == typeof(IReadOnlyCollection<>) || def == typeof(IReadOnlyList<>)
-                        || def == typeof(ISet<>) || def == typeof(IReadOnlySet<>)
-                        || def == typeof(List<>) || def == typeof(HashSet<>))
-                    {
-                        return c.GetGenericArguments()[0];
-                    }
-                }
-                return null;
             }
 
             private Expression BuildFunction(FunctionNode node)
@@ -447,8 +412,8 @@ namespace OdataQueryLite.ExpressionBuilding
             private MethodCallExpression BuildLambdaCollection(LambdaCollectionNode node)
             {
                 var collection = BuildMember(node.CollectionPath);
-                var elem = GetEnumerableElementType(collection.Type)
-                    ?? throw new ArgumentException($"any/all target is not enumerable: {collection.Type.Name}");
+                var elem = MemberPathResolver.GetEnumerableElementType(collection.Type)
+                    ?? throw new OdataQueryException($"any/all target is not enumerable: {collection.Type.Name}");
 
                 if (node.Body == null)
                 {

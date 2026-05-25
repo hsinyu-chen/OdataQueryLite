@@ -119,7 +119,7 @@ namespace OdataQueryLite.Tests
         public void Apply_count_on_non_collection_throws()
         {
             var clause = OrderByParser.Parse("Label/$count");
-            Assert.Throws<ArgumentException>(() => OrderByApplier.Apply(OwnersWithAddressCounts(), clause).ToList());
+            Assert.Throws<OdataQueryException>(() => OrderByApplier.Apply(OwnersWithAddressCounts(), clause).ToList());
         }
 
         [Fact]
@@ -129,7 +129,7 @@ namespace OdataQueryLite.Tests
             var clause = new Ast.OrderByClause([
                 new Ast.OrderByItem(new Ast.MemberNode(["Addresses", "$count", "Foo"]), Ast.OrderByDirection.Ascending)
             ]);
-            Assert.Throws<ArgumentException>(() => OrderByApplier.Apply(OwnersWithAddressCounts(), clause).ToList());
+            Assert.Throws<OdataQueryException>(() => OrderByApplier.Apply(OwnersWithAddressCounts(), clause).ToList());
         }
     }
 }

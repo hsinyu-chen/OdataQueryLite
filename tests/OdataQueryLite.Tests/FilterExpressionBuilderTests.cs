@@ -191,7 +191,7 @@ namespace OdataQueryLite.Tests
         [Fact]
         public void Unknown_property_throws_with_property_list()
         {
-            var ex = Assert.Throws<ArgumentException>(() => Compile<Customer>("Bogus eq 1"));
+            var ex = Assert.Throws<OdataQueryException>(() => Compile<Customer>("Bogus eq 1"));
             Assert.Contains("Bogus", ex.Message);
             Assert.Contains("Customer", ex.Message);
         }
