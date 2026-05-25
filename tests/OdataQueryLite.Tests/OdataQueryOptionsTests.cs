@@ -104,6 +104,29 @@ namespace OdataQueryLite.Tests
         }
 
         [Fact]
+        public void Negative_top_rejected_at_construction()
+        {
+            var ex = Assert.Throws<OdataQueryException>(() =>
+                new OdataQueryOptions<Item>(new OdataQueryParts { Top = -1 }));
+            Assert.Contains("$top", ex.Message);
+        }
+
+        [Fact]
+        public void Negative_skip_rejected_at_construction()
+        {
+            var ex = Assert.Throws<OdataQueryException>(() =>
+                new OdataQueryOptions<Item>(new OdataQueryParts { Skip = -3 }));
+            Assert.Contains("$skip", ex.Message);
+        }
+
+        [Fact]
+        public void Top_zero_returns_empty_page()
+        {
+            var opts = new OdataQueryOptions<Item>(new OdataQueryParts { Top = 0 });
+            Assert.Empty(opts.Apply(Rows()).Data.Cast<Item>());
+        }
+
+        [Fact]
         public void Apply_dollar_apply_throws_unsupported()
         {
             var ex = Assert.Throws<UnsupportedQueryOptionException>(() =>

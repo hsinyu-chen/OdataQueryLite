@@ -13,22 +13,25 @@ namespace OdataQueryLite.ExpressionBuilding
     // class that must produce the same diagnostic regardless of which $-option triggered it.
     internal static class MemberPathResolver
     {
-        // AOT-clean: explicit BaseType walk catches custom collections without GetInterfaces().
-        public static Type GetEnumerableElementType(Type t)
+        // Walks the implemented interfaces to find IEnumerable<T> and return T. Accepts any
+        // type implementing IEnumerable<T> (including third-party collections), with string
+        // explicitly excluded — string implements IEnumerable<char> but `$count("Name")` would
+        // return character count, not a collection cardinality, surprising callers.
+        // DynamicallyAccessedMembers(Interfaces) propagates the trim requirement: callers must
+        // hand in a Type whose interface metadata the trimmer preserved. EF Core navigation
+        // property types satisfy this because they're reachable from the entity class which
+        // already carries [DynamicallyAccessedMembers(PublicProperties)] up at the engine entry.
+        public static Type GetEnumerableElementType(
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.Interfaces)] Type t)
         {
+            if (t == typeof(string)) return null;
             if (t.IsArray) return t.GetElementType();
-            for (var c = t; c != null; c = c.BaseType)
+            if (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+                return t.GetGenericArguments()[0];
+            foreach (var iface in t.GetInterfaces())
             {
-                if (!c.IsGenericType) continue;
-                var def = c.GetGenericTypeDefinition();
-                if (def == typeof(IEnumerable<>) || def == typeof(IQueryable<>)
-                    || def == typeof(ICollection<>) || def == typeof(IList<>)
-                    || def == typeof(IReadOnlyCollection<>) || def == typeof(IReadOnlyList<>)
-                    || def == typeof(ISet<>) || def == typeof(IReadOnlySet<>)
-                    || def == typeof(List<>) || def == typeof(HashSet<>))
-                {
-                    return c.GetGenericArguments()[0];
-                }
+                if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+                    return iface.GetGenericArguments()[0];
             }
             return null;
         }

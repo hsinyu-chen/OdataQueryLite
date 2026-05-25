@@ -43,6 +43,15 @@ namespace OdataQueryLite
             if (!string.IsNullOrEmpty(parts.Apply))
                 throw new UnsupportedQueryOptionException("$apply", "$apply is not supported. Use a dedicated aggregation API.");
 
+            // OData v4 Part 2 §5.1.4 / §5.1.5: $top and $skip must be non-negative.
+            // Silently ignoring negatives (the old `> 0` / `>= 0` guards on Apply) would let
+            // a $top=-5 request return the entire dataset — spec violation and data-exposure
+            // hazard. Reject at the binder boundary so the caller sees a clean 400.
+            if (parts.Top is int t and < 0)
+                throw new OdataQueryException($"$top must be a non-negative integer; got {t}.");
+            if (parts.Skip is int s and < 0)
+                throw new OdataQueryException($"$skip must be a non-negative integer; got {s}.");
+
             RawFilter = parts.Filter;
             RawOrderBy = parts.OrderBy;
             RawExpand = parts.Expand;
@@ -103,8 +112,10 @@ namespace OdataQueryLite
 
             if (opt.Paging)
             {
+                // Negatives already rejected at construction; 0-skip is a no-op so save the
+                // Queryable.Skip call. 0-top is meaningful (returns empty set) per spec.
                 if (Skip is int skip and > 0) q = q.Skip(skip);
-                if (Top is int top and >= 0) q = q.Take(top);
+                if (Top is int top) q = q.Take(top);
             }
 
             return new QueryResult(q, total);
