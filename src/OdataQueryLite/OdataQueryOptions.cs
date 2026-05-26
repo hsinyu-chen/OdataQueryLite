@@ -107,10 +107,12 @@ namespace OdataQueryLite
             if (_filterCompiled is not null)
                 q = _filterCompiled.Apply(q, _filterParsed!.Literals);
 
-            // Count is measured on the filtered, pre-paged set so the total reflects what the
-            // client could iterate if they paged through everything — matches Microsoft's
-            // ApplyTo TotalCount semantics.
-            long? total = (opt.Count && Count) ? q.LongCount() : null;
+            // Capture the filtered, pre-orderby, pre-paged shape for the caller to count. We
+            // don't enumerate here — the caller chooses sync LongCount() / async LongCountAsync()
+            // per their provider, or doesn't enumerate at all. Engine stays provider-agnostic.
+            // OrderBy is excluded because Count is order-independent; pre-paging is included
+            // because clients expect $count to reflect the total matching set, not the page size.
+            IQueryable? unpaged = (opt.Count && Count) ? q : null;
 
             if (opt.OrderBy && _orderByClause is not null)
                 q = OrderByApplier.Apply(q, _orderByClause);
@@ -123,7 +125,7 @@ namespace OdataQueryLite
                 if (Top is int top) q = q.Take(top);
             }
 
-            return new QueryResult(q, total);
+            return new QueryResult(q, unpaged);
         }
     }
 }

@@ -28,7 +28,7 @@ namespace OdataQueryLite.Tests
         {
             var opts = new OdataQueryOptions<Item>(new OdataQueryParts());
             var result = opts.Apply(Rows());
-            Assert.Null(result.TotalCount);
+            Assert.Null(result.Unpaged);
             Assert.Equal(5, result.Data.Cast<Item>().Count());
         }
 
@@ -57,7 +57,7 @@ namespace OdataQueryLite.Tests
         [Fact]
         public void Count_reflects_filtered_pre_paged_set()
         {
-            // Filter narrows to 3 rows; paging only emits 1; TotalCount must still be 3.
+            // Filter narrows to 3 rows; paging only emits 1; Unpaged.LongCount() must still be 3.
             var opts = new OdataQueryOptions<Item>(new OdataQueryParts
             {
                 Filter = "Price gt 25",
@@ -65,7 +65,8 @@ namespace OdataQueryLite.Tests
                 Count = true,
             });
             var result = opts.Apply(Rows());
-            Assert.Equal(3, result.TotalCount);
+            Assert.NotNull(result.Unpaged);
+            Assert.Equal(3, result.Unpaged.Cast<Item>().LongCount());
             Assert.Single(result.Data.Cast<Item>());
         }
 
@@ -74,16 +75,16 @@ namespace OdataQueryLite.Tests
         {
             var opts = new OdataQueryOptions<Item>(new OdataQueryParts { Count = true });
             var noCount = opts.Apply(Rows(), new ApplyOptions().ApplyCount(false));
-            Assert.Null(noCount.TotalCount);
+            Assert.Null(noCount.Unpaged);
         }
 
         [Fact]
         public void Count_only_runs_when_query_sets_count_flag()
         {
-            // $count=false on the wire -> Count semantics off even with ApplyCount(true).
+            // $count=false on the wire -> Unpaged is null even with ApplyCount(true).
             var opts = new OdataQueryOptions<Item>(new OdataQueryParts { Count = false });
             var result = opts.Apply(Rows());
-            Assert.Null(result.TotalCount);
+            Assert.Null(result.Unpaged);
         }
 
         [Fact]

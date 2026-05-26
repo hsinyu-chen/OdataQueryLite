@@ -37,9 +37,11 @@ namespace OdataQueryLite.AspNetCore.Tests
         public IActionResult Get(OdataQueryOptions<Item> q)
         {
             var result = q.Apply(_items);
+            // Sync LongCount() against in-memory IQueryable; EF Core callers would await
+            // LongCountAsync() on result.Unpaged instead.
             return Ok(new
             {
-                Total = result.TotalCount,
+                Total = result.Unpaged?.Cast<Item>().LongCount(),
                 Data = result.Data.Cast<Item>().Select(i => new { i.Id, i.Name, i.Price }).ToList(),
             });
         }
