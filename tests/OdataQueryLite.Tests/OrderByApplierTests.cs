@@ -130,6 +130,15 @@ namespace OdataQueryLite.Tests
         }
 
         [Fact]
+        public void Apply_orderby_complex_navigation_property_rejected()
+        {
+            // $orderby=Home points at the Address class itself, not Home/City. Per Part 2
+            // §5.1.4 this must produce a primitive scalar, so the engine rejects with 400.
+            var clause = OrderByParser.Parse("Home");
+            Assert.Throws<OdataQueryException>(() => OrderByApplier.Apply(Rows(), clause).ToList());
+        }
+
+        [Fact]
         public void Apply_count_not_terminal_throws()
         {
             // Addresses/$count/Foo — $count must be terminal.

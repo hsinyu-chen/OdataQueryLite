@@ -39,13 +39,14 @@ namespace OdataQueryLite.ExpressionBuilding
         {
             var param = Expression.Parameter(typeof(T), "x");
             var body = MemberPathResolver.WalkPath(param, member.Path);
-            // Reject `$orderby=Orders` (an entire collection nav) — OData spec only allows
-            // ordering by single-valued expressions. Without this guard EF Core would attempt
-            // SQL translation of "ORDER BY (ICollection<>)" and the query fails as 500 instead
-            // of the proper 400.
-            if (MemberPathResolver.GetEnumerableElementType(body.Type) is not null)
+            // OData v4.01 Part 2 §5.1.4: each $orderby expression MUST evaluate to a primitive
+            // scalar type. Reject collections (`$orderby=Orders`) and complex objects
+            // (`$orderby=Home` where Home is an Address class) — both would otherwise reach
+            // EF Core and fail SQL translation as 500. string + byte[] count as primitives.
+            var underlying = Nullable.GetUnderlyingType(body.Type) ?? body.Type;
+            if (!underlying.IsValueType && underlying != typeof(string) && underlying != typeof(byte[]))
                 throw new OdataQueryException(
-                    $"Cannot $orderby a collection property; saw '{string.Join('/', member.Path)}'. Use a scalar property or '$count' terminal.");
+                    $"Cannot $orderby a non-scalar property; saw '{string.Join('/', member.Path)}'. Use a scalar property or '$count' terminal.");
             var lambdaType = typeof(Func<,>).MakeGenericType(typeof(T), body.Type);
             return (Expression.Lambda(lambdaType, body, param), body.Type);
         }
