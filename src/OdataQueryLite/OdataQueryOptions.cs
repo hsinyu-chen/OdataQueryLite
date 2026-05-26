@@ -107,12 +107,12 @@ namespace OdataQueryLite
             if (_filterCompiled is not null)
                 q = _filterCompiled.Apply(q, _filterParsed!.Literals);
 
-            // Capture the filtered, pre-orderby, pre-paged shape for the caller to count. We
-            // don't enumerate here — the caller chooses sync LongCount() / async LongCountAsync()
-            // per their provider, or doesn't enumerate at all. Engine stays provider-agnostic.
-            // OrderBy is excluded because Count is order-independent; pre-paging is included
-            // because clients expect $count to reflect the total matching set, not the page size.
-            IQueryable? unpaged = (opt.Count && Count) ? q : null;
+            // Snapshot the filtered, pre-orderby, pre-paged queryable so the caller can count
+            // it independently. We don't enumerate — caller chooses sync LongCount() or async
+            // LongCountAsync() per their provider, or skips entirely. Whether to surface a
+            // total to the client is the host's call, typically gated on Count (the wire $count
+            // flag). OrderBy is excluded because Count is order-independent.
+            var unpaged = q;
 
             if (opt.OrderBy && _orderByClause is not null)
                 q = OrderByApplier.Apply(q, _orderByClause);

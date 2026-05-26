@@ -28,7 +28,8 @@ namespace OdataQueryLite.Tests
         {
             var opts = new OdataQueryOptions<Item>(new OdataQueryParts());
             var result = opts.Apply(Rows());
-            Assert.Null(result.Unpaged);
+            // Unpaged is always populated; host decides whether to enumerate based on opts.Count.
+            Assert.Equal(5, result.Unpaged.Cast<Item>().LongCount());
             Assert.Equal(5, result.Data.Cast<Item>().Count());
         }
 
@@ -55,7 +56,7 @@ namespace OdataQueryLite.Tests
         }
 
         [Fact]
-        public void Count_reflects_filtered_pre_paged_set()
+        public void Unpaged_reflects_filtered_pre_paged_set()
         {
             // Filter narrows to 3 rows; paging only emits 1; Unpaged.LongCount() must still be 3.
             var opts = new OdataQueryOptions<Item>(new OdataQueryParts
@@ -65,26 +66,23 @@ namespace OdataQueryLite.Tests
                 Count = true,
             });
             var result = opts.Apply(Rows());
-            Assert.NotNull(result.Unpaged);
             Assert.Equal(3, result.Unpaged.Cast<Item>().LongCount());
             Assert.Single(result.Data.Cast<Item>());
         }
 
         [Fact]
-        public void Count_only_runs_when_options_request_count()
+        public void Count_wire_flag_exposed_for_host_decision()
         {
-            var opts = new OdataQueryOptions<Item>(new OdataQueryParts { Count = true });
-            var noCount = opts.Apply(Rows(), new ApplyOptions().ApplyCount(false));
-            Assert.Null(noCount.Unpaged);
-        }
-
-        [Fact]
-        public void Count_only_runs_when_query_sets_count_flag()
-        {
-            // $count=false on the wire -> Unpaged is null even with ApplyCount(true).
-            var opts = new OdataQueryOptions<Item>(new OdataQueryParts { Count = false });
-            var result = opts.Apply(Rows());
-            Assert.Null(result.Unpaged);
+            // $count=true on the wire -> opts.Count is true. Host inspects this to decide
+            // whether to materialize result.Unpaged into the response payload. Engine has
+            // no opinion — Unpaged is always populated.
+            var withCount = new OdataQueryOptions<Item>(new OdataQueryParts { Count = true });
+            var withoutCount = new OdataQueryOptions<Item>(new OdataQueryParts { Count = false });
+            Assert.True(withCount.Count);
+            Assert.False(withoutCount.Count);
+            // Both still populate Unpaged.
+            Assert.Equal(5, withCount.Apply(Rows()).Unpaged.Cast<Item>().LongCount());
+            Assert.Equal(5, withoutCount.Apply(Rows()).Unpaged.Cast<Item>().LongCount());
         }
 
         [Fact]
