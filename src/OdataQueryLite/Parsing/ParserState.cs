@@ -2,14 +2,27 @@ using System.Collections.Generic;
 
 namespace OdataQueryLite.Parsing
 {
+    /// <summary>
+    /// Token cursor used by every parser in this namespace. Wraps a position into the token list and supplies
+    /// the common <see cref="Peek"/> / <see cref="Consume"/> / <see cref="Expect"/> primitives plus member-path
+    /// helpers shared between <c>$expand</c>, <c>$select</c>, and <c>$orderby</c>.
+    /// </summary>
+    /// <param name="tokens">Tokens to walk; the trailing <see cref="TokenKind.EOF"/> is required.</param>
     public sealed class ParserState(IReadOnlyList<Token> tokens)
     {
         private int _pos;
 
+        /// <summary>Returns the current token without advancing.</summary>
         public Token Peek() => tokens[_pos];
 
+        /// <summary>Returns the current token and advances past it.</summary>
         public Token Consume() => tokens[_pos++];
 
+        /// <summary>
+        /// If the current token is the identifier <paramref name="keyword"/>, consumes it and returns <see langword="true"/>;
+        /// otherwise leaves the cursor untouched.
+        /// </summary>
+        /// <param name="keyword">Expected keyword text (case-sensitive).</param>
         public bool TryConsumeKeyword(string keyword)
         {
             var t = Peek();
@@ -17,6 +30,10 @@ namespace OdataQueryLite.Parsing
             return false;
         }
 
+        /// <summary>Asserts the current token has the given <paramref name="kind"/>, consumes it, and returns it.</summary>
+        /// <param name="kind">Required token kind.</param>
+        /// <returns>The consumed token.</returns>
+        /// <exception cref="FilterSyntaxException">The current token's kind doesn't match.</exception>
         public Token Expect(TokenKind kind)
         {
             var t = Peek();
@@ -26,9 +43,11 @@ namespace OdataQueryLite.Parsing
             return t;
         }
 
-        // Reads a comma-separated list of member paths into `sink`, joining each path
-        // with '/' (e.g. $select=Name,Customer/Phone yields "Name", "Customer/Phone").
-        // OData $select accepts nested property paths, not just flat identifiers.
+        /// <summary>
+        /// Reads a comma-separated list of member paths into <paramref name="sink"/>, joining each path with
+        /// <c>/</c> (e.g. <c>$select=Name,Customer/Phone</c> yields <c>"Name"</c>, <c>"Customer/Phone"</c>).
+        /// </summary>
+        /// <param name="sink">Destination collection; appended to, never cleared.</param>
         public void ReadMemberPathList(ICollection<string> sink)
         {
             sink.Add(string.Join('/', ReadMemberPath()));
@@ -39,7 +58,8 @@ namespace OdataQueryLite.Parsing
             }
         }
 
-        // Reads `A`, `A/B`, `A/B/C`, ... — an OData nested-property path.
+        /// <summary>Reads <c>A</c>, <c>A/B</c>, <c>A/B/C</c>, ... — an OData nested-property path.</summary>
+        /// <returns>The segment list, in order.</returns>
         public IReadOnlyList<string> ReadMemberPath()
         {
             List<string> path = [Expect(TokenKind.Identifier).Text];

@@ -11,8 +11,18 @@ using OdataQueryLite.ExpressionBuilding;
 
 namespace OdataQueryLite.Caching
 {
+    /// <summary>Builds <see cref="ICompiledQuery{T}"/> instances from parsed <c>$filter</c> results.</summary>
     public static class CompiledQueryFactory
     {
+        /// <summary>
+        /// Compiles <paramref name="parsed"/> into a reusable <see cref="ICompiledQuery{T}"/>. The result captures
+        /// the body Expression and the literal-slot types; per-call <see cref="ICompiledQuery{T}.Apply"/> substitutes
+        /// the literal array without recompiling.
+        /// </summary>
+        /// <typeparam name="T">Entity type the filter references.</typeparam>
+        /// <param name="parsed">Parsed filter AST and literal slots.</param>
+        /// <returns>The compiled query.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="parsed"/> is <see langword="null"/>.</exception>
         [RequiresUnreferencedCode("Builds an Expression tree that accesses T's public properties by name; T's properties must be preserved by the trimmer.")]
         [RequiresDynamicCode("Calls IQueryable.Where with a generic Expression<Func<T,bool>>; provider implementations may need dynamic code under AOT.")]
         public static ICompiledQuery<T> Build<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] T>(

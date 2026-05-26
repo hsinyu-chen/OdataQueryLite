@@ -6,12 +6,23 @@ using OdataQueryLite.Ast;
 
 namespace OdataQueryLite.ExpressionBuilding
 {
+    /// <summary>
+    /// Composes a parsed <see cref="OrderByClause"/> onto an <see cref="IQueryable{T}"/> as
+    /// <c>OrderBy[Descending]</c> / <c>ThenBy[Descending]</c> calls.
+    /// </summary>
     public static class OrderByApplier
     {
-        // Builds `Queryable.OrderBy(x => x.Path).ThenBy(...)` from a parsed OrderByClause.
-        // Goes through the Provider so EF Core sees a real Queryable.OrderBy call and can
-        // translate to SQL ORDER BY — building an IOrderedEnumerable in memory would force
-        // client-side sorting and break the parameterized-SQL contract.
+        /// <summary>
+        /// Builds <c>Queryable.OrderBy(x =&gt; x.Path).ThenBy(...)</c> from <paramref name="clause"/>. Goes
+        /// through the source's <c>Provider</c> so EF Core sees a real <c>Queryable.OrderBy</c> call and can
+        /// translate to SQL <c>ORDER BY</c>.
+        /// </summary>
+        /// <typeparam name="T">Entity type.</typeparam>
+        /// <param name="source">Input query.</param>
+        /// <param name="clause">Parsed <c>$orderby</c>, or <see langword="null"/> / empty to skip ordering.</param>
+        /// <returns>The ordered query; the original <paramref name="source"/> when <paramref name="clause"/> is empty.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="source"/> is <see langword="null"/>.</exception>
+        /// <exception cref="OdataQueryException">An item references a non-scalar property.</exception>
         [RequiresUnreferencedCode("Resolves Queryable.OrderBy/ThenBy by name via Expression.Call.")]
         [RequiresDynamicCode("Constructs generic Func<T,TKey> lambdas whose TKey is only known at runtime.")]
         public static IQueryable<T> Apply<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] T>(

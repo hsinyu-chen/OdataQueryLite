@@ -7,13 +7,33 @@ using OdataQueryLite.Ast;
 
 namespace OdataQueryLite.ExpressionBuilding
 {
+    /// <summary>
+    /// Output of <see cref="FilterExpressionBuilder.Build{T}"/> — the body Expression plus the slot type
+    /// for each literal in the source filter.
+    /// </summary>
+    /// <param name="Body">Boolean Expression tree referencing <c>entityParam</c> and <c>argsParam</c>.</param>
+    /// <param name="SlotTypes">CLR type assigned to each literal slot, in slot-index order.</param>
     public sealed record BuiltFilter(Expression Body, Type[] SlotTypes);
 
+    /// <summary>
+    /// Compiles a <see cref="FilterParseResult"/> into a LINQ Expression body that can be passed to
+    /// <c>Queryable.Where</c>. Literals are accessed through an <c>object[]</c> parameter so one Expression
+    /// tree can be cached per shape and bound per request.
+    /// </summary>
     public static class FilterExpressionBuilder
     {
-        // Uses reflection on T's properties to build Expression nodes by name, and Expression.Call
-        // with generic Enumerable / string methods — both flag IL2026 / IL3050 under trim+AOT.
-        // Caller-side annotation surfaces this to the user of OdataQueryLite at their entry point.
+        /// <summary>
+        /// Builds a boolean Expression body that references <paramref name="entityParam"/> for member access
+        /// and <paramref name="argsParam"/> for literal lookups.
+        /// </summary>
+        /// <typeparam name="T">Entity type the filter is rooted on.</typeparam>
+        /// <param name="parsed">Parsed filter AST and literal slots.</param>
+        /// <param name="entityParam">The entity-parameter to use as <c>x</c> in <c>x => ...</c>.</param>
+        /// <param name="argsParam">An <c>object[]</c> parameter; literal slots are read by index.</param>
+        /// <returns>The built Expression body plus per-slot CLR types.</returns>
+        /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException"><paramref name="entityParam"/> is not typed as <typeparamref name="T"/>, or <paramref name="argsParam"/> is not typed as <c>object[]</c>.</exception>
+        /// <exception cref="OdataQueryException">The parsed filter does not evaluate to a boolean.</exception>
         [RequiresUnreferencedCode("FilterExpressionBuilder resolves entity properties by name via reflection. T's public properties must be preserved by the trimmer.")]
         [RequiresDynamicCode("FilterExpressionBuilder constructs LINQ Expression trees and instantiates generic methods (Enumerable.Any/All/Count, string instance methods).")]
         public static BuiltFilter Build<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] T>(

@@ -8,16 +8,24 @@ using OdataQueryLite.Caching;
 
 namespace OdataQueryLite.AspNetCore
 {
-    // Per-entity-type IModelBinder. Reads $-options from HttpRequest.Query, constructs
-    // OdataQueryOptions<T>, and hands it to MVC as the action argument. Parse-time errors
-    // propagate as OdataQueryException — UnsupportedQueryOptionMiddleware turns those into
-    // HTTP 400 at the pipeline boundary.
-    //
-    // [DAM(PublicProperties)] T: the constructed OdataQueryOptions<T> requires T's
-    // properties to be preserved by the trimmer.
+    /// <summary>
+    /// Per-entity-type <see cref="IModelBinder"/>. Reads <c>$</c>-options from <c>HttpRequest.Query</c>,
+    /// constructs <see cref="OdataQueryOptions{T}"/>, and hands it to MVC as the action argument. Parse-time
+    /// errors propagate as <see cref="OdataQueryException"/> — <see cref="UnsupportedQueryOptionMiddleware"/>
+    /// turns those into HTTP 400 at the pipeline boundary.
+    /// </summary>
+    /// <typeparam name="T">Entity type. Its public properties must be preserved by the trimmer.</typeparam>
     public sealed class OdataQueryOptionsBinder<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] T>
         : IModelBinder where T : class
     {
+        /// <summary>
+        /// Binds <see cref="OdataQueryOptions{T}"/> from the current request's query string. Always succeeds
+        /// (sets <see cref="ModelBindingResult.Success"/>); parse failures throw and are caught by the
+        /// pipeline middleware.
+        /// </summary>
+        /// <param name="bindingContext">MVC binding context.</param>
+        /// <returns>A completed <see cref="Task"/>.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="bindingContext"/> is <see langword="null"/>.</exception>
         // IModelBinder.BindModelAsync is not annotated upstream so we cannot propagate
         // RequiresUnreferencedCode / RequiresDynamicCode on the override (IL2046 / IL3051).
         // The dynamic-code requirement is declared on AddOdataQueryLite() — the public

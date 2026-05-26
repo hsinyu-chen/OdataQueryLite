@@ -5,10 +5,25 @@ using System.Reflection;
 
 namespace OdataQueryLite.Permissions
 {
+    /// <summary>
+    /// Fluent builder that produces an <see cref="AllowedExpandNode"/> tree describing the navigation /
+    /// scalar properties a client is permitted to <c>$select</c> or <c>$expand</c>. Consumed by
+    /// <see cref="ExpandSubsumption.IsAllowed"/> at request time.
+    /// </summary>
+    /// <typeparam name="TEntity">Root entity type whose properties this builder enumerates.</typeparam>
     public sealed class AllowedExpandBuilder<TEntity>
     {
         private readonly AllowedExpandNode _root = new();
 
+        /// <summary>
+        /// Allows a property-access chain ending in either a scalar (adds to the parent node's allowed-select
+        /// set) or a navigation property (marks the leaf node as unrestricted-select).
+        /// </summary>
+        /// <typeparam name="TChild">Property type at the end of the chain.</typeparam>
+        /// <param name="selector">Property-access chain rooted at the entity parameter, e.g. <c>x =&gt; x.Customer.Name</c>.</param>
+        /// <returns>The same builder for fluent chaining.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="selector"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException">The selector body is not a property-access chain.</exception>
         public AllowedExpandBuilder<TEntity> AllowExpand<TChild>(Expression<Func<TEntity, TChild>> selector)
         {
             ArgumentNullException.ThrowIfNull(selector);
@@ -29,6 +44,16 @@ namespace OdataQueryLite.Permissions
             return this;
         }
 
+        /// <summary>
+        /// Allows a collection navigation property and recursively configures the per-element rules through
+        /// <paramref name="configureChild"/>. The two-argument overload is required for collection
+        /// navigations because the single-argument <c>AllowExpand</c> can't represent per-element scope.
+        /// </summary>
+        /// <typeparam name="TChild">Element type of the collection.</typeparam>
+        /// <param name="collectionSelector">Property-access chain ending at a collection navigation.</param>
+        /// <param name="configureChild">Callback that configures the rules applied to each element.</param>
+        /// <returns>The same builder for fluent chaining.</returns>
+        /// <exception cref="ArgumentNullException">Either argument is <see langword="null"/>.</exception>
         public AllowedExpandBuilder<TEntity> AllowExpand<TChild>(
             Expression<Func<TEntity, IEnumerable<TChild>>> collectionSelector,
             Action<AllowedExpandBuilder<TChild>> configureChild)
@@ -46,6 +71,8 @@ namespace OdataQueryLite.Permissions
             return this;
         }
 
+        /// <summary>Returns the accumulated allow-tree.</summary>
+        /// <returns>The root <see cref="AllowedExpandNode"/>.</returns>
         public AllowedExpandNode Build() => _root;
 
         private static AllowedExpandNode Navigate(AllowedExpandNode start, IReadOnlyList<PropertyInfo> path, int from, int toExclusive)

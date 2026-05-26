@@ -5,8 +5,17 @@ using System.Reflection;
 
 namespace OdataQueryLite.Permissions
 {
+    /// <summary>Extracts an ordered <see cref="PropertyInfo"/> chain from a property-access lambda body.</summary>
     public static class PropertyAccessVisitor
     {
+        /// <summary>
+        /// Walks the body of <paramref name="lambda"/> as a property-access chain rooted in the lambda
+        /// parameter (<c>x =&gt; x.A.B.C</c>) and returns the chain root-first (<c>[A, B, C]</c>).
+        /// </summary>
+        /// <param name="lambda">Lambda whose body is a property-access chain.</param>
+        /// <returns>The chain ordered root → leaf.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="lambda"/> is <see langword="null"/>.</exception>
+        /// <exception cref="ArgumentException">The body contains a non-property-access node.</exception>
         public static IReadOnlyList<PropertyInfo> ExtractPath(LambdaExpression lambda)
         {
             ArgumentNullException.ThrowIfNull(lambda);

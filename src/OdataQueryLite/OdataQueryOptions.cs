@@ -8,14 +8,18 @@ using OdataQueryLite.Parsing;
 
 namespace OdataQueryLite
 {
-    // Phase 1.B.11 orchestrator. Replaces Microsoft.AspNetCore.OData.ODataQueryOptions<T>
-    // as the public entry-point. Owns the parse of every $-option at construction so
-    // malformed requests fail fast at the binder layer rather than mid-Apply; Apply itself
-    // is allocation-light (just composes IQueryable transformations).
-    //
-    // $select/$expand projection is parsed (exposed via Expand) but not applied to the
-    // returned IQueryable — that's Phase 1.B.13. Whitelist enforcement against Expand is
-    // the caller's job (typically via OdataQueryLite.Permissions.ExpandSubsumption).
+    /// <summary>
+    /// Public entry-point that parses an OData query at construction and applies the parsed pipeline to an
+    /// <see cref="IQueryable{T}"/> on demand. Owns the parse of every <c>$</c>-option up front so malformed
+    /// requests fail fast at the binder layer rather than mid-<see cref="Apply"/>; <see cref="Apply"/> itself
+    /// is allocation-light (just composes <see cref="IQueryable"/> transformations).
+    /// </summary>
+    /// <remarks>
+    /// <c>$select</c> / <c>$expand</c> projection is parsed (exposed via <see cref="Expand"/>) but not applied
+    /// to the returned <see cref="IQueryable"/>. Whitelist enforcement against <see cref="Expand"/> is the
+    /// caller's job (typically via <see cref="OdataQueryLite.Permissions.ExpandSubsumption"/>).
+    /// </remarks>
+    /// <typeparam name="T">Entity type whose public properties form the queryable surface.</typeparam>
     public sealed class OdataQueryOptions<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] T>
         where T : class
     {
@@ -23,17 +27,41 @@ namespace OdataQueryLite
         private readonly FilterParseResult? _filterParsed;
         private readonly OrderByClause? _orderByClause;
 
+        /// <summary>The original <c>$filter</c> text supplied by the caller, or <see langword="null"/>.</summary>
         public string? RawFilter { get; }
+
+        /// <summary>The original <c>$orderby</c> text supplied by the caller, or <see langword="null"/>.</summary>
         public string? RawOrderBy { get; }
+
+        /// <summary>The original <c>$expand</c> text supplied by the caller, or <see langword="null"/>.</summary>
         public string? RawExpand { get; }
+
+        /// <summary>The original <c>$select</c> text supplied by the caller, or <see langword="null"/>.</summary>
         public string? RawSelect { get; }
+
+        /// <summary>Parsed <c>$top</c>, or <see langword="null"/> when not supplied. Guaranteed non-negative.</summary>
         public int? Top { get; }
+
+        /// <summary>Parsed <c>$skip</c>, or <see langword="null"/> when not supplied. Guaranteed non-negative.</summary>
         public int? Skip { get; }
+
+        /// <summary>Whether the caller requested <c>$count=true</c>.</summary>
         public bool Count { get; }
 
-        // Merged $expand + $select tree. null when neither option was supplied.
+        /// <summary>
+        /// Merged <c>$expand</c> + <c>$select</c> tree. <see langword="null"/> when neither option was supplied.
+        /// </summary>
         public ExpandRequestNode? Expand { get; }
 
+        /// <summary>
+        /// Parses every <c>$</c>-option from <paramref name="parts"/>. Failures surface as
+        /// <see cref="OdataQueryException"/> / <see cref="UnsupportedQueryOptionException"/>.
+        /// </summary>
+        /// <param name="parts">The raw query options.</param>
+        /// <param name="cache">Optional cross-request compile cache; when <see langword="null"/> every call recompiles.</param>
+        /// <exception cref="OdataQueryException">Negative <c>$top</c>/<c>$skip</c>, or any parse failure inside the supplied <c>$</c>-options.</exception>
+        /// <exception cref="UnsupportedQueryOptionException"><c>$apply</c> was supplied.</exception>
+        /// <exception cref="ArgumentNullException"><paramref name="parts"/> is <see langword="null"/>.</exception>
         [RequiresUnreferencedCode("Compiles a filter Expression tree that accesses T's public properties by name; T's properties must be preserved by the trimmer.")]
         [RequiresDynamicCode("Builds Expression<Func<T, bool>> / Func<T, TKey> at runtime; AOT may require dynamic-code support depending on the IQueryable provider.")]
         public OdataQueryOptions(OdataQueryParts parts, QueryCompileCache? cache = null)
@@ -96,6 +124,14 @@ namespace OdataQueryLite
             Expand = expand;
         }
 
+        /// <summary>
+        /// Composes the parsed pipeline (<c>$filter</c>, <c>$orderby</c>, <c>$top</c>, <c>$skip</c>) onto
+        /// <paramref name="source"/> and returns the resulting query plus an unpaged snapshot for counting.
+        /// </summary>
+        /// <param name="source">The provider-bound input query (typically an EF Core DbSet or in-memory <see cref="IQueryable"/>).</param>
+        /// <param name="options">Per-call switches; <see langword="null"/> applies every stage.</param>
+        /// <returns>The composed query plus the filtered-but-unpaged snapshot.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="source"/> is <see langword="null"/>.</exception>
         [RequiresUnreferencedCode("Delegates to ICompiledQuery<T>.Apply / OrderByApplier.Apply which build Expression trees over T.")]
         [RequiresDynamicCode("Delegates to ICompiledQuery<T>.Apply / OrderByApplier.Apply which compile generic delegates at runtime.")]
         public QueryResult Apply(IQueryable<T> source, IApplyOptions? options = null)

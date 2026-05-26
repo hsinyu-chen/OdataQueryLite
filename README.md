@@ -1,53 +1,135 @@
 # OdataQueryLite
 
-A lightweight, dependency-free OData v4 **$filter / $orderby / $expand / $select** parser for .NET. No `Microsoft.AspNetCore.OData`, no EDM, no ASP.NET coupling.
+A lightweight OData v4 **`$filter` / `$orderby` / `$expand` / `$select` / `$top` / `$skip` / `$count`** engine for .NET. No `Microsoft.AspNetCore.OData`, no EDM model, no MVC formatter — just parses the query string and composes `IQueryable<T>` transformations you can hand to EF Core or any LINQ provider.
 
-> **Status:** alpha — parser front-half complete. Expression builder + EF Core IQueryable application + cache layer landing next.
+> **Status:** `0.1.0-alpha`. Parser + expression builder + cache + ASP.NET Core integration shipped. 248 tests, 0 build warnings. Public API may still shift before `1.0.0` — pin the patch version if you depend on it now.
 
 ## Why
 
-`Microsoft.AspNetCore.OData` is ~9 MB of EDM model, MVC formatters, routers and serializers — useful when you want all of OData, heavyweight when you only want to accept query options against `IQueryable<T>`. OdataQueryLite is the latter half: it parses the URL query options into an AST, and (soon) translates them to `Expression<Func<T, ...>>` ready for EF Core.
+`Microsoft.AspNetCore.OData` is ~9 MB of EDM model, MVC formatters, routers, and serializers — overkill when all you want is "accept `$filter=...` against my `IQueryable<T>`." OdataQueryLite gives you that without the rest:
 
-## Surface (current)
+- Pure `System.Linq.Expressions`, AOT-compatible (`<IsAotCompatible>true</IsAotCompatible>`).
+- Provider-agnostic — the engine never enumerates. Hand the result to EF Core, an in-memory list, or any custom `IQueryable<T>` provider.
+- Async-friendly without an EF-Core sub-package: the engine returns `IQueryable`, you `await x.LongCountAsync()` (or sync `LongCount()`) on your side.
+
+## Two packages
+
+| Package | Targets | Use when |
+|---|---|---|
+| **`OdataQueryLite`** | pure `net10.0`, no ASP.NET Core dependency | parsing query strings outside a web host (CLI tools, batch jobs, tests) — or you bring your own host glue |
+| **`OdataQueryLite.AspNetCore`** | `net10.0`, `FrameworkReference Microsoft.AspNetCore.App` | MVC model binder + Minimal-API parameter wrapper + error-mapping middleware in one line of startup |
+
+## Quick start (ASP.NET Core)
+
+```csharp
+// Program.cs — Minimal API + MVC, same setup.
+var builder = WebApplication.CreateBuilder(args);
+builder.Services
+    .AddControllers()
+    .AddOdataQueryLite();    // MVC binder (skip this for pure Minimal-API hosts)
+builder.Services.AddOdataQueryLite();  // cache + infrastructure
+
+var app = builder.Build();
+app.UseOdataQueryLite();     // maps OdataQueryException -> HTTP 400
+app.MapControllers();
+
+// Minimal API: take OdataQueryRequest<T> as a parameter.
+app.MapGet("/items", async (OdataQueryRequest<Item> q, AppDbContext db) =>
+{
+    var result = q.Options.Apply(db.Items);
+    return Results.Ok(new
+    {
+        total = q.Options.Count ? await result.Unpaged.Cast<Item>().LongCountAsync() : (long?)null,
+        data  = await result.Data.Cast<Item>().ToListAsync(),
+    });
+});
+
+app.Run();
+```
+
+MVC controller version:
+
+```csharp
+[ApiController]
+[Route("api/[controller]")]
+public class ItemsController(AppDbContext db) : ControllerBase
+{
+    [HttpGet]
+    public async Task<IActionResult> Get(OdataQueryOptions<Item> q)
+    {
+        var result = q.Apply(db.Items);
+        return Ok(new
+        {
+            total = q.Count ? await result.Unpaged.Cast<Item>().LongCountAsync() : (long?)null,
+            data  = await result.Data.Cast<Item>().ToListAsync(),
+        });
+    }
+}
+```
+
+Malformed `$filter`, `$apply`, negative `$top`, duplicate `$-options`, etc. throw `OdataQueryException` from the binder/`BindAsync`; the middleware turns them into `400` with `{ Error, Message, Option }` JSON. Controllers see `q.Apply(...)` succeed or never run.
+
+## Standalone parsing (no web host)
+
+```csharp
+using OdataQueryLite;
+
+var opts = new OdataQueryOptions<Item>(new OdataQueryParts
+{
+    Filter  = "Price gt 25 and Name eq 'Apple'",
+    OrderBy = "Price desc",
+    Top     = 10,
+    Count   = true,
+});
+
+var result = opts.Apply(items.AsQueryable());
+long total = result.Unpaged.Cast<Item>().LongCount();
+List<Item> page = result.Data.Cast<Item>().ToList();
+```
+
+## Surface
 
 | OData query option | Status |
 |---|---|
-| `$filter` operators `eq / ne / gt / ge / lt / le / and / or / not` | parsed |
-| `$filter` functions `contains / startswith / endswith` | parsed |
-| `$filter` string / date / math functions (`tolower`, `year`, `round`, …) | parsed |
-| `$filter` lambdas `Items/any(o: o/Status eq 'X')`, `Items/all(...)` | parsed |
-| `$filter` collection count `Items/$count gt 0` | parsed |
-| `$orderby` | parsed |
-| `$expand` (nested, with inner `$select`/`$expand`, slash chains) | parsed |
-| `$select` (flat names, nested paths) | parsed |
-| `$top` / `$skip` / `$count` | host-side (model binder) |
-| `$apply` | **not supported** — reject at the host layer |
+| `$filter` — `eq / ne / gt / ge / lt / le / and / or / not` | ✅ parsed + applied |
+| `$filter` — `contains / startswith / endswith` | ✅ |
+| `$filter` — string / date / math functions (`tolower`, `year`, `round`, …) | ✅ |
+| `$filter` — lambdas `Items/any(o: o/Status eq 'X')`, `Items/all(...)` | ✅ |
+| `$filter` — collection count `Items/$count gt 0` | ✅ |
+| `$orderby` — multi-key, `desc`, nested paths, collection `/$count` | ✅ |
+| `$expand` — nested, slash chains, inner `$select`/`$expand` | ✅ parsed; projection deferred (see roadmap) |
+| `$select` — flat names, nested paths | ✅ parsed; projection deferred (see roadmap) |
+| `$top` / `$skip` / `$count` | ✅ applied (`$count` exposes `Unpaged` for caller to materialize) |
+| `$apply` | ❌ — `UnsupportedQueryOptionException` at construction |
 
-## Quick example
+## Configuration
 
 ```csharp
-using OdataQueryLite.Parsing;
-
-var lexed = OdataLexer.Tokenize("Status eq 'Active' and Amount gt 100");
-var result = FilterParser.Parse("Status eq 'Active' and Amount gt 100");
-
-// AST root is parameterized — literals collected separately for cache reuse.
-result.Ast        // BinaryNode(And, BinaryNode(Eq, MemberNode([Status]), ParamRefNode(0)), ...)
-result.Literals   // [("Active", String), (100, Number)]
-
-// Lexer wrapper also gives you a cache-friendly shape rendering.
-lexed.ToShapeString()  // "Status eq ?str and Amount gt ?num"
-lexed.ToString()       // "Status eq 'Active' and Amount gt 100" (re-rendered verbatim)
+services.AddOdataQueryLite(opts =>
+{
+    opts.UseCache         = true;     // default: process-wide compiled-query cache
+    opts.MaxCacheEntries  = 10_000;   // default; bump for high-cardinality filter surfaces
+});
 ```
+
+Cache is keyed on `(entityType, normalized-shape, parameter-types)` — `?$filter=Id eq 1` and `?$filter=Id eq 2` share a compiled `Func<T, bool>`; the literal `1` / `2` flows through a `ValueTuple<>` rather than re-baked into the expression tree.
 
 ## Roadmap
 
-- [x] Lexer + filter / orderby / expand parsers + AST
-- [x] Parameterized literals for shape-based caching
-- [ ] `PropertyAccessVisitor` + `AllowedExpandTree` (whitelist / subsumption)
-- [ ] `FilterExpressionBuilder` (AST → `Expression<Func<T, bool>>`)
-- [ ] `TypeCoercion` (enum / nullable / DateTimeOffset)
-- [ ] Compiled-delegate cache keyed on `(entityType, shape, parameterTypes)`
+- [x] Lexer + filter / orderby / expand / select parsers + AST
+- [x] Parameterized literals + shape-based caching
+- [x] `PropertyAccessVisitor` + `AllowedExpandNode` (whitelist + subsumption)
+- [x] `FilterExpressionBuilder` (AST → `Expression<Func<T, bool>>`)
+- [x] `TypeCoercion` (enum / nullable / DateTimeOffset / `Edm.Binary`)
+- [x] Compiled-delegate cache (`QueryCompileCache`, LRU-style soft cap)
+- [x] `OdataQueryOptions<T>` orchestrator + `OrderByApplier`
+- [x] ASP.NET Core integration package (MVC `IModelBinder`, Minimal-API `OdataQueryRequest<T>`, error-mapping middleware, idempotent `AddOdataQueryLite()` split per ASP.NET Core convention)
+- [x] `IQueryable` return-shape redesign (`QueryResult.Unpaged` deferred enumeration → no EF-Core sub-package needed)
+- [ ] `$select` / `$expand` projection applied to the returned `IQueryable` (currently parsed-only; engine exposes the merged `ExpandRequestNode` for whitelist validation via `ExpandSubsumption`)
+
+## Trim / AOT
+
+The library is annotated for the trimmer (`<IsAotCompatible>true</IsAotCompatible>`). Public entry points (`OdataQueryOptions<T>` ctor, `AddOdataQueryLite()`) carry `[RequiresUnreferencedCode]` + `[RequiresDynamicCode]` because filter expressions are compiled at runtime against `T`'s reflected properties. Hosts targeting Native AOT should mark their `[DynamicallyAccessedMembers(PublicProperties)]` on the entity types they expose.
 
 ## Origin
 
