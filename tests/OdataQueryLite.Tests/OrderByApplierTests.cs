@@ -89,7 +89,7 @@ namespace OdataQueryLite.Tests
         {
             public int Id { get; set; }
             public string Label { get; set; }
-            public ICollection<Address> Addresses { get; set; } = new List<Address>();
+            public ICollection<Address> Addresses { get; set; } = [];
         }
 
         private static IQueryable<Owner> OwnersWithAddressCounts() => new[]

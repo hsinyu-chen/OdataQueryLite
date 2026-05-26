@@ -93,7 +93,7 @@ namespace OdataQueryLite.AspNetCore.Tests
         public void Duplicate_option_rejected_per_spec(string key)
         {
             // OData v4.01 Part 1 §11.2: each system query option appears at most once.
-            var d = new Dictionary<string, StringValues> { [key] = new StringValues(new[] { "a", "b" }) };
+            var d = new Dictionary<string, StringValues> { [key] = new StringValues(["a", "b"]) };
             var ex = Assert.Throws<OdataQueryException>(() =>
                 OdataQueryPartsFactory.FromQuery(new QueryCollection(d)));
             Assert.Contains(key, ex.Message);

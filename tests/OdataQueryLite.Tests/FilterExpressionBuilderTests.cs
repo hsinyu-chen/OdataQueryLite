@@ -36,7 +36,7 @@ namespace OdataQueryLite.Tests
             public DateOnly BirthDate { get; set; }
             public DateOnly? AnniversaryDate { get; set; }
             public bool? IsActive { get; set; }
-            public ICollection<Order> Orders { get; set; } = new List<Order>();
+            public ICollection<Order> Orders { get; set; } = [];
             public Status PrimaryStatus { get; set; }
         }
 
@@ -177,7 +177,7 @@ namespace OdataQueryLite.Tests
         {
             var c = Compile<Customer>("Orders/any()");
             Assert.True(c.Match(new Customer { Orders = { new Order() } }));
-            Assert.False(c.Match(new Customer { Orders = new List<Order>() }));
+            Assert.False(c.Match(new Customer { Orders = [] }));
         }
 
         [Fact]
@@ -285,7 +285,7 @@ namespace OdataQueryLite.Tests
 
         public sealed class Sale
         {
-            public CustomList Items { get; set; } = new CustomList();
+            public CustomList Items { get; set; } = [];
         }
 
         [Fact]
@@ -300,7 +300,7 @@ namespace OdataQueryLite.Tests
 
         public sealed class SetEntity
         {
-            public HashSet<Order> Tagged { get; set; } = new();
+            public HashSet<Order> Tagged { get; set; } = [];
             public ISet<Order> Marked { get; set; } = new HashSet<Order>();
         }
 
@@ -316,12 +316,12 @@ namespace OdataQueryLite.Tests
 
         public sealed class Nested
         {
-            public ICollection<Inner> Outers { get; set; } = new List<Inner>();
+            public ICollection<Inner> Outers { get; set; } = [];
         }
         public sealed class Inner
         {
             public int Threshold { get; set; }
-            public ICollection<Leaf> Children { get; set; } = new List<Leaf>();
+            public ICollection<Leaf> Children { get; set; } = [];
         }
         public sealed class Leaf
         {
@@ -403,7 +403,7 @@ namespace OdataQueryLite.Tests
             // literal must use value equality, not boxed reference equality.
             var any = Compile<Customer>("Orders/any() eq true");
             Assert.True(any.Match(new Customer { Orders = { new Order() } }));
-            Assert.False(any.Match(new Customer { Orders = new List<Order>() }));
+            Assert.False(any.Match(new Customer { Orders = [] }));
 
             var neg = Compile<Customer>("(Name eq 'A') eq false");
             Assert.True(neg.Match(new Customer { Name = "B" }));
@@ -451,7 +451,7 @@ namespace OdataQueryLite.Tests
         }
         public sealed class Account
         {
-            public ICollection<Subscription> Subscriptions { get; set; } = new List<Subscription>();
+            public ICollection<Subscription> Subscriptions { get; set; } = [];
         }
 
         [Fact]
@@ -465,7 +465,7 @@ namespace OdataQueryLite.Tests
             Assert.False(Compile<Customer>("IsActive or null").Match(new Customer { IsActive = null }));
             Assert.False(Compile<Customer>("not null").Match(new Customer()));
             Assert.False(Compile<Customer>("null").Match(new Customer()));
-            Assert.False(Compile<Account>("Subscriptions/any(s: null)").Match(new Account { Subscriptions = new List<Subscription> { new() { Active = true } } }));
+            Assert.False(Compile<Account>("Subscriptions/any(s: null)").Match(new Account { Subscriptions = [new() { Active = true }] }));
         }
 
         [Fact]
@@ -473,8 +473,8 @@ namespace OdataQueryLite.Tests
         {
             // Without CoerceToBool on the lambda body, `Subscriptions/any(s: s/Active)`
             // would build Func<Subscription, bool?> and Enumerable.Any wouldn't bind.
-            var a = new Account { Subscriptions = new List<Subscription> { new() { Active = true } } };
-            var b = new Account { Subscriptions = new List<Subscription> { new() { Active = null } } };
+            var a = new Account { Subscriptions = [new() { Active = true }] };
+            var b = new Account { Subscriptions = [new() { Active = null }] };
             Assert.True(Compile<Account>("Subscriptions/any(s: s/Active)").Match(a));
             Assert.False(Compile<Account>("Subscriptions/any(s: s/Active)").Match(b));
         }

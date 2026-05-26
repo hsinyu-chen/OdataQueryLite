@@ -76,10 +76,42 @@ namespace OdataQueryLite.ExpressionBuilding
             string name)
         {
             var pi = t.GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
-            if (pi != null) return pi;
-            var available = string.Join(", ", t.GetProperties(BindingFlags.Public | BindingFlags.Instance).Select(p => p.Name));
+            // Treat ignored properties as if they didn't exist — same error message so callers
+            // can't discriminate "wrong name" from "hidden by [JsonIgnore]/[OdataIgnore]" and
+            // mount boolean probes like `$filter=startswith(Password, 's')` against them. The
+            // Available list is filtered for the same reason.
+            if (pi != null && !IsIgnored(pi)) return pi;
+            var available = string.Join(", ",
+                t.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                    .Where(p => !IsIgnored(p))
+                    .Select(p => p.Name));
             throw new OdataQueryException(
                 $"Property '{name}' not found on type '{t.Name}'. Available: {available}.");
         }
+
+        /// <summary>
+        /// Whether <paramref name="prop"/> is hidden from OData via
+        /// <see cref="OdataIgnoreAttribute"/>, <c>Newtonsoft.Json.JsonIgnoreAttribute</c>, or
+        /// <c>System.Text.Json.Serialization.JsonIgnoreAttribute</c>. The JSON attributes are
+        /// matched by full name so the engine carries no NuGet dependency on either package.
+        /// Hidden properties are unreachable from any <c>$</c>-option — <c>$select</c>,
+        /// <c>$expand</c>, <c>$filter</c>, and <c>$orderby</c> all reject them, surfacing the
+        /// same "not found" diagnostic as a misspelled property to deny attackers a way to
+        /// discriminate hidden-but-present from absent.
+        /// </summary>
+        public static bool IsIgnored(PropertyInfo prop)
+        {
+            foreach (var attr in prop.GetCustomAttributes(inherit: true))
+            {
+                var fullName = attr.GetType().FullName;
+                if (fullName == NewtonsoftJsonIgnoreFullName) return true;
+                if (fullName == SystemTextJsonIgnoreFullName) return true;
+                if (attr is OdataIgnoreAttribute) return true;
+            }
+            return false;
+        }
+
+        private const string NewtonsoftJsonIgnoreFullName = "Newtonsoft.Json.JsonIgnoreAttribute";
+        private const string SystemTextJsonIgnoreFullName = "System.Text.Json.Serialization.JsonIgnoreAttribute";
     }
 }

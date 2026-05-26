@@ -39,9 +39,6 @@ namespace OdataQueryLite.ExpressionBuilding
     /// </remarks>
     public static class SelectExpandProjector
     {
-        private const string NewtonsoftJsonIgnoreFullName = "Newtonsoft.Json.JsonIgnoreAttribute";
-        private const string SystemTextJsonIgnoreFullName = "System.Text.Json.Serialization.JsonIgnoreAttribute";
-
         private static readonly Type DictType = typeof(Dictionary<string, object?>);
         private static readonly Type KvpType = typeof(KeyValuePair<string, object?>);
 
@@ -51,12 +48,12 @@ namespace OdataQueryLite.ExpressionBuilding
         [UnconditionalSuppressMessage("Trimming", "IL2080:RequiresUnreferencedCode",
             Justification = "Dictionary<string, object?> ctor over IEnumerable<KeyValuePair<,>> is part of the BCL surface preserved by typeof().")]
         private static readonly ConstructorInfo DictFromKvpEnumerable =
-            DictType.GetConstructor(new[] { typeof(IEnumerable<KeyValuePair<string, object?>>) })!;
+            DictType.GetConstructor([typeof(IEnumerable<KeyValuePair<string, object?>>)])!;
 
         [UnconditionalSuppressMessage("Trimming", "IL2080:RequiresUnreferencedCode",
             Justification = "KeyValuePair<string, object?>(string, object) ctor is part of the BCL surface preserved by typeof().")]
         private static readonly ConstructorInfo KvpCtor =
-            KvpType.GetConstructor(new[] { typeof(string), typeof(object) })!;
+            KvpType.GetConstructor([typeof(string), typeof(object)])!;
 
         /// <summary>
         /// Composes a dictionary projection onto <paramref name="source"/> matching
@@ -97,7 +94,7 @@ namespace OdataQueryLite.ExpressionBuilding
 
         [RequiresUnreferencedCode("Resolves t's public properties by name.")]
         [RequiresDynamicCode("Builds nested generic Expression.Call to Enumerable.Select / Enumerable.ToList for collection navigations.")]
-        private static Expression BuildDictionaryExpression(
+        private static NewExpression  BuildDictionaryExpression(
             [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] Type t,
             Expression source,
             ExpandRequestNode node)
@@ -120,7 +117,10 @@ namespace OdataQueryLite.ExpressionBuilding
             foreach (var prop in t.GetProperties(BindingFlags.Public | BindingFlags.Instance))
             {
                 if (!prop.CanRead) continue;
-                if (IsIgnored(prop)) continue;
+                // Skip indexers (`public object this[string key]`) — Expression.Property
+                // requires an index argument and throws ArgumentException otherwise.
+                if (prop.GetIndexParameters().Length > 0) continue;
+                if (MemberPathResolver.IsIgnored(prop)) continue;
 
                 var name = prop.Name;
                 var isExpanded = node.ExpandedProperties.TryGetValue(name, out var childNode);
@@ -168,7 +168,7 @@ namespace OdataQueryLite.ExpressionBuilding
                 var selectCall = Expression.Call(
                     typeof(Enumerable),
                     nameof(Enumerable.Select),
-                    new[] { elementType, DictType },
+                    [elementType, DictType],
                     memberAccess,
                     itemLambda);
 
@@ -176,36 +176,29 @@ namespace OdataQueryLite.ExpressionBuilding
                 return Expression.Call(
                     typeof(Enumerable),
                     nameof(Enumerable.ToList),
-                    new[] { DictType },
+                    [DictType],
                     selectCall);
             }
 
-            // Reference navigation: x.Customer => dict (no null guard — EF Core handles null nav
-            // via outer join semantics; in-memory LINQ NREs match legacy ApplyTo behavior.)
-            return BuildDictionaryExpression(propType, memberAccess, childNode);
-        }
-
-        private static bool IsIgnored(PropertyInfo prop)
-        {
-            foreach (var attr in prop.GetCustomAttributes(inherit: true))
-            {
-                var name = attr.GetType().FullName;
-                if (name == NewtonsoftJsonIgnoreFullName) return true;
-                if (name == SystemTextJsonIgnoreFullName) return true;
-                if (attr is OdataIgnoreAttribute) return true;
-            }
-            return false;
+            // Reference navigation: x.Customer == null ? null : new Dictionary<>(...).
+            // EF Core translates this conditional cleanly (CASE WHEN [c].[Id] IS NULL THEN NULL ...
+            // over the LEFT JOIN), and in-memory LINQ now also handles null navs without NRE.
+            var dictExpr = BuildDictionaryExpression(propType, memberAccess, childNode);
+            var nullDict = Expression.Constant(null, DictType);
+            var isNull = Expression.Equal(memberAccess, Expression.Constant(null, memberAccess.Type));
+            return Expression.Condition(isNull, nullDict, dictExpr);
         }
 
         private static bool IsNavigationLike(
             [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.Interfaces)] Type t)
         {
-            // string + byte[] are scalar (OData primitives). All other IEnumerable<T> and all
-            // non-primitive class types count as navigation: $select on them in absence of
-            // $expand has no defined semantics here, so we omit by default.
+            // string + byte[] are scalar (OData primitives). All other IEnumerable<T>, class
+            // types, and interface types (covers `public ICustomer Customer { get; set; }`
+            // pattern) count as navigation: $select on them in absence of $expand has no
+            // defined semantics here, so we omit by default.
             if (t == typeof(string) || t == typeof(byte[])) return false;
             if (MemberPathResolver.GetEnumerableElementType(t) is not null) return true;
-            if (t.IsClass) return true;
+            if (t.IsClass || t.IsInterface) return true;
             return false;
         }
     }

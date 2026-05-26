@@ -34,7 +34,7 @@ namespace OdataQueryLite.Tests
             var bin = Assert.IsType<BinaryNode>(r.Ast);
             Assert.Equal(BinaryOp.Eq, bin.Op);
             var member = Assert.IsType<MemberNode>(bin.Left);
-            Assert.Equal(new[] { "Name" }, member.Path);
+            Assert.Equal(["Name"], member.Path);
             var p = Assert.IsType<ParamRefNode>(bin.Right);
             Assert.Equal(0, p.Index);
             Assert.Equal(LiteralKind.String, p.Kind);
@@ -63,7 +63,7 @@ namespace OdataQueryLite.Tests
             var r = FilterParser.Parse("Customer/Name eq 'X'");
             var bin = Assert.IsType<BinaryNode>(r.Ast);
             var member = Assert.IsType<MemberNode>(bin.Left);
-            Assert.Equal(new[] { "Customer", "Name" }, member.Path);
+            Assert.Equal(["Customer", "Name"], member.Path);
         }
 
         [Fact]
@@ -198,7 +198,7 @@ namespace OdataQueryLite.Tests
             var r = FilterParser.Parse("Items/$count gt 0");
             var bin = Assert.IsType<BinaryNode>(r.Ast);
             var member = Assert.IsType<MemberNode>(bin.Left);
-            Assert.Equal(new[] { "Items", "$count" }, member.Path);
+            Assert.Equal(["Items", "$count"], member.Path);
         }
 
         [Fact]
@@ -215,12 +215,12 @@ namespace OdataQueryLite.Tests
             var r = FilterParser.Parse("Items/any(o: o/Status eq 'Active')");
             var lambda = Assert.IsType<LambdaCollectionNode>(r.Ast);
             Assert.Equal(LambdaOp.Any, lambda.Op);
-            Assert.Equal(new[] { "Items" }, lambda.CollectionPath);
+            Assert.Equal(["Items"], lambda.CollectionPath);
             Assert.Equal("o", lambda.Param);
             var bin = Assert.IsType<BinaryNode>(lambda.Body);
             Assert.Equal(BinaryOp.Eq, bin.Op);
             var member = Assert.IsType<MemberNode>(bin.Left);
-            Assert.Equal(new[] { "o", "Status" }, member.Path);
+            Assert.Equal(["o", "Status"], member.Path);
         }
 
         [Fact]
@@ -248,7 +248,7 @@ namespace OdataQueryLite.Tests
         {
             var r = FilterParser.Parse("Customer/Orders/any(o: o/Total gt 100)");
             var lambda = Assert.IsType<LambdaCollectionNode>(r.Ast);
-            Assert.Equal(new[] { "Customer", "Orders" }, lambda.CollectionPath);
+            Assert.Equal(["Customer", "Orders"], lambda.CollectionPath);
             Assert.Equal(LambdaOp.Any, lambda.Op);
         }
 
@@ -269,7 +269,7 @@ namespace OdataQueryLite.Tests
             var r = FilterParser.Parse("Things/any eq 'x'");
             var bin = Assert.IsType<BinaryNode>(r.Ast);
             var member = Assert.IsType<MemberNode>(bin.Left);
-            Assert.Equal(new[] { "Things", "any" }, member.Path);
+            Assert.Equal(["Things", "any"], member.Path);
         }
     }
 }

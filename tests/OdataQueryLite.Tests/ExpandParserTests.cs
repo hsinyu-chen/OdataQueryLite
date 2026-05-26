@@ -130,7 +130,7 @@ namespace OdataQueryLite.Tests
             var t = ExpandParser.Parse("Customer/Orders");
             var customer = t.ExpandedProperties["Customer"];
             Assert.Contains("Orders", customer.ExpandedProperties.Keys);
-            Assert.Empty(customer.SelectedFields ?? new HashSet<string>());
+            Assert.Empty(customer.SelectedFields ?? []);
         }
 
         [Fact]

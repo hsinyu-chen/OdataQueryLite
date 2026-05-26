@@ -139,7 +139,7 @@ namespace OdataQueryLite.Tests
             var opts = new OdataQueryOptions<Item>(new OdataQueryParts { Expand = "Related($select=X,Y)" });
             Assert.NotNull(opts.Expand);
             Assert.True(opts.Expand.ExpandedProperties.ContainsKey("Related"));
-            Assert.Equal(new[] { "X", "Y" }, opts.Expand.ExpandedProperties["Related"].SelectedFields.OrderBy(s => s));
+            Assert.Equal(["X", "Y"], opts.Expand.ExpandedProperties["Related"].SelectedFields.OrderBy(s => s));
         }
 
         [Fact]
@@ -152,7 +152,7 @@ namespace OdataQueryLite.Tests
             });
             Assert.NotNull(opts.Expand);
             Assert.True(opts.Expand.ExpandedProperties.ContainsKey("Related"));
-            Assert.Equal(new[] { "Id", "Name" }, opts.Expand.SelectedFields.OrderBy(s => s));
+            Assert.Equal(["Id", "Name"], opts.Expand.SelectedFields.OrderBy(s => s));
         }
 
         [Fact]
