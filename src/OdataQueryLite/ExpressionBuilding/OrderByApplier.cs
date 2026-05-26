@@ -34,7 +34,7 @@ namespace OdataQueryLite.ExpressionBuilding
         }
 
         [RequiresUnreferencedCode("Resolves T's members by name; T's properties must be preserved by the trimmer.")]
-        [RequiresDynamicCode("Constructs Func<T, TKey> at runtime via Type.MakeGenericType.")]
+        [RequiresDynamicCode("Expression.Lambda + WalkPath build generic delegates / Expression.Call to Enumerable.Count<T> at runtime.")]
         private static (LambdaExpression Lambda, Type KeyType) BuildKeySelector<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] T>(MemberNode member)
         {
             var param = Expression.Parameter(typeof(T), "x");
@@ -47,8 +47,9 @@ namespace OdataQueryLite.ExpressionBuilding
             if (!underlying.IsValueType && underlying != typeof(string) && underlying != typeof(byte[]))
                 throw new OdataQueryException(
                     $"Cannot $orderby a non-scalar property; saw '{string.Join('/', member.Path)}'. Use a scalar property or '$count' terminal.");
-            var lambdaType = typeof(Func<,>).MakeGenericType(typeof(T), body.Type);
-            return (Expression.Lambda(lambdaType, body, param), body.Type);
+            // Expression.Lambda infers Func<T, TKey> from the body/param types — saves a
+            // MakeGenericType reflection hop on every $orderby clause item.
+            return (Expression.Lambda(body, param), body.Type);
         }
 
     }
