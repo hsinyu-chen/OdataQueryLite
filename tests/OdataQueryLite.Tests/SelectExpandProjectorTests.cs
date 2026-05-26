@@ -267,6 +267,50 @@ namespace OdataQueryLite.Tests
             Assert.Null(projected[0]["Metadata"]);
         }
 
+        public sealed class RowWithObjectAndJsonSubclass
+        {
+            public int Id { get; set; }
+            public object? Untyped { get; set; }
+            public System.Text.Json.Nodes.JsonObject? Tree { get; set; } // : JsonNode
+        }
+
+        [Fact]
+        public void Object_type_treated_as_scalar_not_navigation()
+        {
+            var src = new[]
+            {
+                new RowWithObjectAndJsonSubclass { Id = 1, Untyped = "hello" },
+            }.AsQueryable();
+
+            var node = new ExpandRequestNode { SelectedFields = ["Id", "Untyped"] };
+            var projected = SelectExpandProjector.Project(src, node)
+                .Cast<Dictionary<string, object?>>().ToList();
+
+            Assert.Equal("hello", projected[0]["Untyped"]);
+        }
+
+        [Fact]
+        public void JsonNode_subclass_treated_as_scalar()
+        {
+            // JsonObject : JsonNode; the whitelist must match subclasses, not just the exact
+            // registered type.
+            var src = new[]
+            {
+                new RowWithObjectAndJsonSubclass
+                {
+                    Id = 1,
+                    Tree = new System.Text.Json.Nodes.JsonObject { ["k"] = "v" },
+                },
+            }.AsQueryable();
+
+            var node = new ExpandRequestNode { SelectedFields = ["Id", "Tree"] };
+            var projected = SelectExpandProjector.Project(src, node)
+                .Cast<Dictionary<string, object?>>().ToList();
+
+            // Stays as JsonObject — not recursed into as a nested entity dict.
+            Assert.IsType<System.Text.Json.Nodes.JsonObject>(projected[0]["Tree"]);
+        }
+
         [Fact]
         public void ScalarClassTypes_extension_treats_custom_type_as_scalar()
         {

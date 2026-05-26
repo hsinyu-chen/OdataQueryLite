@@ -220,15 +220,26 @@ namespace OdataQueryLite.ExpressionBuilding
         private static bool IsNavigationLike(
             [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.Interfaces)] Type t)
         {
-            // string + byte[] are scalar (OData primitives). Host-extensible whitelist covers
-            // BCL wrappers (Uri, JsonNode, JsonDocument) plus anything the host registered.
+            // string + byte[] + object are scalar (untyped object slots hold serializer-managed
+            // values, not sub-entities to recurse into). Host-extensible whitelist covers BCL
+            // wrappers (Uri, JsonNode, JsonDocument) and host-registered value objects;
+            // IsAssignableFrom covers subclass hierarchies (e.g. JsonObject : JsonNode).
             // All other IEnumerable<T>, class types, and interface types (covers
             // `public ICustomer Customer { get; set; }` pattern) count as navigation: $select
             // on them in absence of $expand has no defined semantics here, so we omit by default.
-            if (t == typeof(string) || t == typeof(byte[])) return false;
-            if (ScalarClassTypes.Contains(t)) return false;
+            if (t == typeof(string) || t == typeof(byte[]) || t == typeof(object)) return false;
+            if (IsScalarClassType(t)) return false;
             if (MemberPathResolver.GetEnumerableElementType(t) is not null) return true;
             if (t.IsClass || t.IsInterface) return true;
+            return false;
+        }
+
+        private static bool IsScalarClassType(Type t)
+        {
+            foreach (var scalarType in ScalarClassTypes)
+            {
+                if (scalarType.IsAssignableFrom(t)) return true;
+            }
             return false;
         }
     }

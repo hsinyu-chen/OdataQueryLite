@@ -99,18 +99,25 @@ namespace OdataQueryLite.ExpressionBuilding
         /// same "not found" diagnostic as a misspelled property to deny attackers a way to
         /// discriminate hidden-but-present from absent.
         /// </summary>
-        public static bool IsIgnored(PropertyInfo prop)
-        {
-            foreach (var attr in prop.GetCustomAttributes(inherit: true))
+        public static bool IsIgnored(PropertyInfo prop) =>
+            IgnoredCache.GetOrAdd(prop, static p =>
             {
-                // Cheap concrete-type check first; FullName allocation only on miss.
-                if (attr is OdataIgnoreAttribute) return true;
-                var fullName = attr.GetType().FullName;
-                if (fullName == NewtonsoftJsonIgnoreFullName) return true;
-                if (fullName == SystemTextJsonIgnoreFullName) return true;
-            }
-            return false;
-        }
+                foreach (var attr in p.GetCustomAttributes(inherit: true))
+                {
+                    // Cheap concrete-type check first; FullName allocation only on miss.
+                    if (attr is OdataIgnoreAttribute) return true;
+                    var fullName = attr.GetType().FullName;
+                    if (fullName == NewtonsoftJsonIgnoreFullName) return true;
+                    if (fullName == SystemTextJsonIgnoreFullName) return true;
+                }
+                return false;
+            });
+
+        // PropertyInfo is reflection-stable per (DeclaringType, Name); equality is structural,
+        // so the cache survives even if the BCL returns distinct PropertyInfo instances across
+        // calls. Filter/orderby/projection all hit IsIgnored on every property of T, so the
+        // cache turns N reflection probes per request into N once-per-process.
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<PropertyInfo, bool> IgnoredCache = new();
 
         private const string NewtonsoftJsonIgnoreFullName = "Newtonsoft.Json.JsonIgnoreAttribute";
         private const string SystemTextJsonIgnoreFullName = "System.Text.Json.Serialization.JsonIgnoreAttribute";
