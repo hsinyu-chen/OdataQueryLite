@@ -22,7 +22,7 @@ namespace OdataQueryLite.ExpressionBuilding
                 : memberType;
         }
 
-        public static object Coerce(object rawValue, LiteralKind kind, Type slotType)
+        public static object? Coerce(object? rawValue, LiteralKind kind, Type slotType)
         {
             ArgumentNullException.ThrowIfNull(slotType);
             if (rawValue == null) return null;
@@ -33,7 +33,7 @@ namespace OdataQueryLite.ExpressionBuilding
             if (target.IsEnum)
             {
                 if (rawValue is not string s)
-                    throw new ArgumentException($"Enum slot {target.Name} expects string literal; got {kind}.");
+                    throw new OdataQueryException($"Enum slot {target.Name} expects string literal; got {kind}.");
                 return Enum.Parse(target, s, ignoreCase: false);
             }
 
@@ -45,7 +45,7 @@ namespace OdataQueryLite.ExpressionBuilding
                 {
                     DateTimeOffset dto => dto,
                     DateTime dt => new DateTimeOffset(DateTime.SpecifyKind(dt, DateTimeKind.Utc)),
-                    _ => throw new ArgumentException($"DateTimeOffset slot expects DateTime/DateTimeOffset literal; got {rawValue.GetType().Name}.")
+                    _ => throw new OdataQueryException($"DateTimeOffset slot expects DateTime/DateTimeOffset literal; got {rawValue.GetType().Name}.")
                 };
             }
 
@@ -56,9 +56,9 @@ namespace OdataQueryLite.ExpressionBuilding
                     DateTimeOffset dto => dto.UtcDateTime,
                     DateTime { Kind: DateTimeKind.Utc } dt => dt,
                     DateTime { Kind: DateTimeKind.Local } dt => dt.ToUniversalTime(),
-                    DateTime { Kind: DateTimeKind.Unspecified } => throw new ArgumentException(
+                    DateTime { Kind: DateTimeKind.Unspecified } => throw new OdataQueryException(
                         "DateTime literal has Unspecified kind; OData v4 requires UTC (Z) or explicit offset."),
-                    _ => throw new ArgumentException($"DateTime slot expects DateTime/DateTimeOffset literal; got {rawValue.GetType().Name}.")
+                    _ => throw new OdataQueryException($"DateTime slot expects DateTime/DateTimeOffset literal; got {rawValue.GetType().Name}.")
                 };
             }
 
@@ -66,13 +66,13 @@ namespace OdataQueryLite.ExpressionBuilding
             {
                 if (rawValue is string gs) return Guid.Parse(gs);
                 if (rawValue is Guid g) return g;
-                throw new ArgumentException($"Guid slot expects string / Guid literal; got {rawValue.GetType().Name}.");
+                throw new OdataQueryException($"Guid slot expects string / Guid literal; got {rawValue.GetType().Name}.");
             }
 
             if (rawValue is IConvertible)
                 return Convert.ChangeType(rawValue, target, CultureInfo.InvariantCulture);
 
-            throw new ArgumentException(
+            throw new OdataQueryException(
                 $"Cannot coerce literal of type {rawValue.GetType().Name} (kind {kind}) to slot type {target.Name}.");
         }
 

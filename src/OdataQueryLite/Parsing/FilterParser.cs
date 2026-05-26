@@ -135,8 +135,8 @@ namespace OdataQueryLite.Parsing
         private static LambdaCollectionNode ParseLambdaBody(ParserState s, List<string> collectionPath, LambdaOp op, List<LiteralValue> literals)
         {
             s.Expect(TokenKind.LParen);
-            string param = null;
-            FilterNode body = null;
+            string? param = null;
+            FilterNode? body = null;
             if (s.Peek().Kind != TokenKind.RParen)
             {
                 param = s.Expect(TokenKind.Identifier).Text;
@@ -147,7 +147,7 @@ namespace OdataQueryLite.Parsing
             return new LambdaCollectionNode(collectionPath, op, param, body);
         }
 
-        private static ParamRefNode EmitParam(List<LiteralValue> literals, object value, LiteralKind kind)
+        private static ParamRefNode EmitParam(List<LiteralValue> literals, object? value, LiteralKind kind)
         {
             var idx = literals.Count;
             literals.Add(new LiteralValue(value, kind));

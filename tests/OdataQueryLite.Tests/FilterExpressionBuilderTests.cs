@@ -191,7 +191,7 @@ namespace OdataQueryLite.Tests
         [Fact]
         public void Unknown_property_throws_with_property_list()
         {
-            var ex = Assert.Throws<ArgumentException>(() => Compile<Customer>("Bogus eq 1"));
+            var ex = Assert.Throws<OdataQueryException>(() => Compile<Customer>("Bogus eq 1"));
             Assert.Contains("Bogus", ex.Message);
             Assert.Contains("Customer", ex.Message);
         }
@@ -440,7 +440,7 @@ namespace OdataQueryLite.Tests
             // Per OData v4 a $filter expression must evaluate to bool. A bare non-bool member
             // (e.g. `filter=Name`) used to fail with an inner Expression.Equal "operator not
             // defined" — confusing for callers. Surface the spec contract directly.
-            var ex = Assert.Throws<ArgumentException>(() => Compile<Customer>("Name"));
+            var ex = Assert.Throws<OdataQueryException>(() => Compile<Customer>("Name"));
             Assert.Contains("boolean", ex.Message);
             Assert.Contains("String", ex.Message);
         }

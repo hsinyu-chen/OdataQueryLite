@@ -17,8 +17,8 @@ namespace OdataQueryLite.Ast
     public sealed record LambdaCollectionNode(
         IReadOnlyList<string> CollectionPath,
         LambdaOp Op,
-        string Param,
-        FilterNode Body) : FilterNode;
+        string? Param,
+        FilterNode? Body) : FilterNode;
 
     public enum LambdaOp { Any, All }
 
@@ -42,7 +42,7 @@ namespace OdataQueryLite.Ast
 
     public enum LiteralKind { Number, String, Boolean, DateTime, Null }
 
-    public sealed record LiteralValue(object Value, LiteralKind Kind);
+    public sealed record LiteralValue(object? Value, LiteralKind Kind);
 
     public sealed record FilterParseResult(FilterNode Ast, IReadOnlyList<LiteralValue> Literals);
 }

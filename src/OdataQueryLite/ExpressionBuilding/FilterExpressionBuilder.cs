@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Linq.Expressions;
-using System.Reflection;
 using OdataQueryLite.Ast;
 
 namespace OdataQueryLite.ExpressionBuilding
@@ -39,8 +38,8 @@ namespace OdataQueryLite.ExpressionBuilding
             if (body.Type == typeof(bool?))
                 body = BuildContext.CoerceToBool(body);
             else if (body.Type != typeof(bool))
-                throw new ArgumentException(
-                    $"Filter expression must evaluate to a boolean; got {body.Type.Name}.", nameof(parsed));
+                throw new OdataQueryException(
+                    $"Filter expression must evaluate to a boolean; got {body.Type.Name}.");
             return new BuiltFilter(body, ctx.SlotTypes);
         }
 
@@ -128,7 +127,7 @@ namespace OdataQueryLite.ExpressionBuilding
                 : t == typeof(short) || t == typeof(ushort) || t == typeof(byte) || t == typeof(sbyte) ? 0
                 : -1;
 
-            private static Type TryResolveOperandSlotType(FilterNode operand) => operand switch
+            private static Type? TryResolveOperandSlotType(FilterNode operand) => operand switch
             {
                 FunctionNode f => TypeCoercion.SlotTypeFor(FunctionReturnType(f.Name)),
                 // Bool-returning nodes — without these, `(A eq B) eq true` and
@@ -185,56 +184,7 @@ namespace OdataQueryLite.ExpressionBuilding
                     }
                 }
 
-                var cursor = head;
-                for (int i = start; i < path.Count; i++)
-                {
-                    var seg = path[i];
-                    if (seg == "$count")
-                    {
-                        if (i != path.Count - 1)
-                            throw new ArgumentException($"$count must be the terminal segment; saw '{string.Join('/', path)}'.");
-                        var elem = GetEnumerableElementType(cursor.Type)
-                            ?? throw new ArgumentException($"$count target is not enumerable: {cursor.Type.Name}");
-                        cursor = Expression.Call(typeof(Enumerable), nameof(Enumerable.Count), [elem], cursor);
-                        return cursor;
-                    }
-                    var prop = ResolveProperty(cursor.Type, seg);
-                    cursor = Expression.Property(cursor, prop);
-                }
-                return cursor;
-            }
-
-            private static PropertyInfo ResolveProperty(
-                [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] Type t,
-                string name)
-            {
-                var pi = t.GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
-                if (pi != null) return pi;
-                var available = string.Join(", ", t.GetProperties(BindingFlags.Public | BindingFlags.Instance).Select(p => p.Name));
-                throw new ArgumentException(
-                    $"Property '{name}' not found on type '{t.Name}'. Available: {available}.");
-            }
-
-            // Walks the BaseType chain to catch custom collections (`class MyOrders : List<Order>`)
-            // — `t.IsGenericType` is false for those, but List<Order> is in the inheritance chain.
-            // Stays AOT-clean by avoiding GetInterfaces().
-            private static Type GetEnumerableElementType(Type t)
-            {
-                if (t.IsArray) return t.GetElementType();
-                for (var c = t; c != null; c = c.BaseType)
-                {
-                    if (!c.IsGenericType) continue;
-                    var def = c.GetGenericTypeDefinition();
-                    if (def == typeof(IEnumerable<>) || def == typeof(IQueryable<>)
-                        || def == typeof(ICollection<>) || def == typeof(IList<>)
-                        || def == typeof(IReadOnlyCollection<>) || def == typeof(IReadOnlyList<>)
-                        || def == typeof(ISet<>) || def == typeof(IReadOnlySet<>)
-                        || def == typeof(List<>) || def == typeof(HashSet<>))
-                    {
-                        return c.GetGenericArguments()[0];
-                    }
-                }
-                return null;
+                return MemberPathResolver.WalkPath(head, path, start);
             }
 
             private Expression BuildFunction(FunctionNode node)
@@ -331,7 +281,7 @@ namespace OdataQueryLite.ExpressionBuilding
             private ConditionalExpression SubstringCall(FunctionNode node)
             {
                 if (node.Args.Count is not (2 or 3))
-                    throw new ArgumentException($"substring expects 2 or 3 args; got {node.Args.Count}.");
+                    throw new OdataQueryException($"substring expects 2 or 3 args; got {node.Args.Count}.");
                 var instance = Build(node.Args[0], typeof(string));
                 // Numeric args go through SlotTypeFor (int?) so a ParamRef slot stays nullable
                 // in line with every other arg site; unwrap back to int for the BCL signature.
@@ -342,14 +292,14 @@ namespace OdataQueryLite.ExpressionBuilding
                     nullGuard = Expression.OrElse(nullGuard, Expression.Equal(startRaw, Expression.Constant(null, typeof(int?))));
                 Expression call;
                 if (node.Args.Count == 2)
-                    call = Expression.Call(instance, typeof(string).GetMethod(nameof(string.Substring), [typeof(int)]), startVal);
+                    call = Expression.Call(instance, typeof(string).GetMethod(nameof(string.Substring), [typeof(int)])!, startVal);
                 else
                 {
                     var lenRaw = Build(node.Args[2], TypeCoercion.SlotTypeFor(typeof(int)));
                     var lenVal = UnwrapNullableInt(lenRaw);
                     if (lenRaw.Type == typeof(int?))
                         nullGuard = Expression.OrElse(nullGuard, Expression.Equal(lenRaw, Expression.Constant(null, typeof(int?))));
-                    call = Expression.Call(instance, typeof(string).GetMethod(nameof(string.Substring), [typeof(int), typeof(int)]), startVal, lenVal);
+                    call = Expression.Call(instance, typeof(string).GetMethod(nameof(string.Substring), [typeof(int), typeof(int)])!, startVal, lenVal);
                 }
                 return Expression.Condition(nullGuard, Expression.Constant(null, typeof(string)), call);
             }
@@ -362,12 +312,9 @@ namespace OdataQueryLite.ExpressionBuilding
                 ExpectArgs(node, 2);
                 var a = Build(node.Args[0], typeof(string));
                 var b = Build(node.Args[1], typeof(string));
-                var mi = typeof(string).GetMethod(nameof(string.Concat), [typeof(string), typeof(string)]);
+                var mi = typeof(string).GetMethod(nameof(string.Concat), [typeof(string), typeof(string)])!;
                 var concat = Expression.Call(mi, a, b);
-                var anyNull = Expression.OrElse(
-                    Expression.Equal(a, Expression.Constant(null, typeof(string))),
-                    Expression.Equal(b, Expression.Constant(null, typeof(string))));
-                return Expression.Condition(anyNull, Expression.Constant(null, typeof(string)), concat);
+                return Expression.Condition(EitherStringNull(a, b), Expression.Constant(null, typeof(string)), concat);
             }
 
             private Expression DateProperty(FunctionNode node, string property)
@@ -379,7 +326,7 @@ namespace OdataQueryLite.ExpressionBuilding
                 // DateOnly maps to Edm.Date per OData v4; only Year/Month/Day are valid on it
                 // (Hour/Minute/Second have no source property and throw via reflection lookup).
                 if (effective != typeof(DateTime) && effective != typeof(DateTimeOffset) && effective != typeof(DateOnly))
-                    throw new ArgumentException($"Date function expects DateTime/DateTimeOffset/DateOnly; got {operand.Type.Name}.");
+                    throw new OdataQueryException($"Date function expects DateTime/DateTimeOffset/DateOnly; got {operand.Type.Name}.");
 
                 if (underlying != null)
                     return IfNullableHasValue(operand, value => Expression.Property(value, property), typeof(int?));
@@ -397,7 +344,7 @@ namespace OdataQueryLite.ExpressionBuilding
                 // avoid lossy double conversion for decimal columns (money fields, etc).
                 Type mathArg = effective == typeof(decimal) ? typeof(decimal)
                     : effective == typeof(double) || effective == typeof(float) ? typeof(double)
-                    : throw new ArgumentException($"Math.{method} expects decimal / double / float; got {effective.Name}.");
+                    : throw new OdataQueryException($"Math.{method} expects decimal / double / float; got {effective.Name}.");
 
                 var mi = typeof(Math).GetMethod(method, [mathArg])
                     ?? throw new InvalidOperationException($"Math.{method}({mathArg.Name}) not found.");
@@ -430,7 +377,7 @@ namespace OdataQueryLite.ExpressionBuilding
             private static void ExpectArgs(FunctionNode node, int count)
             {
                 if (node.Args.Count != count)
-                    throw new ArgumentException($"{node.Name} expects {count} arg(s); got {node.Args.Count}.");
+                    throw new OdataQueryException($"{node.Name} expects {count} arg(s); got {node.Args.Count}.");
             }
 
             private static Type FunctionReturnType(FunctionName fn) => fn switch
@@ -447,8 +394,8 @@ namespace OdataQueryLite.ExpressionBuilding
             private MethodCallExpression BuildLambdaCollection(LambdaCollectionNode node)
             {
                 var collection = BuildMember(node.CollectionPath);
-                var elem = GetEnumerableElementType(collection.Type)
-                    ?? throw new ArgumentException($"any/all target is not enumerable: {collection.Type.Name}");
+                var elem = MemberPathResolver.GetEnumerableElementType(collection.Type)
+                    ?? throw new OdataQueryException($"any/all target is not enumerable: {collection.Type.Name}");
 
                 if (node.Body == null)
                 {
@@ -456,8 +403,10 @@ namespace OdataQueryLite.ExpressionBuilding
                     return Expression.Call(typeof(Enumerable), nameof(Enumerable.Any), [elem], collection);
                 }
 
-                var lambdaParam = Expression.Parameter(elem, node.Param);
-                _lambdaScopes.Push((node.Param, lambdaParam));
+                // `Items/any()` (no-arg) is handled above; reaching here means Param is set.
+                var paramName = node.Param!;
+                var lambdaParam = Expression.Parameter(elem, paramName);
+                _lambdaScopes.Push((paramName, lambdaParam));
                 try
                 {
                     // any/all expect Func<T,bool> — build with bool? so a ParamRef(Null) body
