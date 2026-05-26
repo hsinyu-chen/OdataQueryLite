@@ -61,10 +61,10 @@ namespace OdataQueryLite.AspNetCore.Tests
                     .UseTestServer()
                     .ConfigureServices(s =>
                     {
-                        s.AddOdataQueryLite();
                         s.AddControllers()
                             .AddApplicationPart(typeof(TestAppHost).Assembly)
-                            .AddJsonOptions(o => o.JsonSerializerOptions.PropertyNamingPolicy = null);
+                            .AddJsonOptions(o => o.JsonSerializerOptions.PropertyNamingPolicy = null)
+                            .AddOdataQueryLite();
                     })
                     .Configure(app =>
                     {

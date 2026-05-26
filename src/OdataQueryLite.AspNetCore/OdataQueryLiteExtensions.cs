@@ -9,17 +9,19 @@ using OdataQueryLite.Caching;
 
 namespace OdataQueryLite.AspNetCore
 {
-    // One-line surface for hosts: AddOdataQueryLite() at service config time + UseOdataQueryLite()
-    // in the pipeline. Everything else (binder discovery, $apply rejection, error -> 400) is
-    // wired automatically; callers should not need to know about the binder provider or the
-    // middleware classes.
+    // One-line surface for hosts. The split mirrors the ASP.NET Core convention where
+    // generic infrastructure lives on IServiceCollection and feature-specific glue lives on
+    // the feature builder (AddControllers().AddJsonOptions(), AddAuthentication().AddJwtBearer()):
+    //
+    //   services.AddOdataQueryLite();                       // Minimal-API or shared infra
+    //   services.AddControllers().AddOdataQueryLite();      // MVC users opt into the binder
+    //
+    // Both paths share UseOdataQueryLite() for error -> 400 mapping.
     public static class OdataQueryLiteExtensions
     {
-        // Registers the model-binder provider and (optionally) a process-wide QueryCompileCache.
-        // The cache is a singleton because it bounds Expression-compilation work across all
-        // requests; without it every request reparses + recompiles the filter.
-        [RequiresUnreferencedCode("Registers a model binder provider that constructs OdataQueryOptions<T> via reflection at request time.")]
-        [RequiresDynamicCode("Registers a model binder provider that constructs Expression<Func<T, ...>> via runtime codegen.")]
+        // Registers the optional process-wide QueryCompileCache. Does NOT touch MvcOptions,
+        // so a pure Minimal-API host doesn't carry a dead IConfigureOptions<MvcOptions>
+        // callback. MVC hosts get the binder via the IMvcBuilder overload below.
         public static IServiceCollection AddOdataQueryLite(
             this IServiceCollection services,
             bool useCache = true)
@@ -27,13 +29,21 @@ namespace OdataQueryLite.AspNetCore
             ArgumentNullException.ThrowIfNull(services);
             if (useCache)
                 services.TryAddSingleton<QueryCompileCache>();
+            return services;
+        }
 
-            services.Configure<MvcOptions>(opts =>
+        // MVC opt-in: inserts OdataQueryOptionsBinderProvider so action parameters of type
+        // OdataQueryOptions<T> get bound from the query string. Idempotent — repeated calls
+        // (multiple module initializers, test fixtures rebuilding services) skip the second
+        // insert so the provider chain doesn't get duplicate entries.
+        [RequiresUnreferencedCode("Registers a model binder provider that constructs OdataQueryOptions<T> via reflection at request time.")]
+        [RequiresDynamicCode("Registers a model binder provider that constructs Expression<Func<T, ...>> via runtime codegen.")]
+        public static IMvcBuilder AddOdataQueryLite(this IMvcBuilder builder)
+        {
+            ArgumentNullException.ThrowIfNull(builder);
+            builder.Services.AddOdataQueryLite();
+            builder.Services.Configure<MvcOptions>(opts =>
             {
-                // Guard against duplicate registration when AddOdataQueryLite() is invoked
-                // by several module initializers or by a test fixture that rebuilds the
-                // service collection: a second insert would silently double the provider list
-                // and force every action's parameter metadata to be matched twice.
                 if (opts.ModelBinderProviders.OfType<OdataQueryOptionsBinderProvider>().Any())
                     return;
                 // Insert at index 0 so we win over the default complex-object binder when the
@@ -42,11 +52,11 @@ namespace OdataQueryLite.AspNetCore
                 // through to subsequent providers untouched.
                 opts.ModelBinderProviders.Insert(0, new OdataQueryOptionsBinderProvider());
             });
-            return services;
+            return builder;
         }
 
         // Adds the error-mapping middleware. Place it before UseRouting/UseEndpoints so it
-        // wraps the MVC pipeline that runs model binders.
+        // wraps the request pipeline that runs both MVC binders and Minimal-API BindAsync.
         public static IApplicationBuilder UseOdataQueryLite(this IApplicationBuilder app)
         {
             ArgumentNullException.ThrowIfNull(app);
