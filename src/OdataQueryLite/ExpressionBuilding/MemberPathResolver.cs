@@ -25,7 +25,11 @@ namespace OdataQueryLite.ExpressionBuilding
         public static Type? GetEnumerableElementType(
             [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.Interfaces)] Type t)
         {
-            if (t == typeof(string)) return null;
+            // string + byte[] are OData primitive types (Edm.String / Edm.Binary), not collections.
+            // string implements IEnumerable<char>; byte[] is an array of primitives. Treating
+            // either as a collection would reject `$orderby=Name` (the round-3 collection-orderby
+            // guard) and `$orderby=RowVersion` (byte[] concurrency tokens).
+            if (t == typeof(string) || t == typeof(byte[])) return null;
             if (t.IsArray) return t.GetElementType();
             if (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(IEnumerable<>))
                 return t.GetGenericArguments()[0];

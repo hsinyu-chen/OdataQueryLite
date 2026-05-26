@@ -40,7 +40,7 @@ namespace OdataQueryLite
         {
             ArgumentNullException.ThrowIfNull(parts);
 
-            if (!string.IsNullOrEmpty(parts.Apply))
+            if (!string.IsNullOrWhiteSpace(parts.Apply))
                 throw new UnsupportedQueryOptionException("$apply", "$apply is not supported. Use a dedicated aggregation API.");
 
             // OData v4 Part 2 §5.1.4 / §5.1.5: $top and $skip must be non-negative.
@@ -60,7 +60,7 @@ namespace OdataQueryLite
             Skip = parts.Skip;
             Count = parts.Count;
 
-            if (!string.IsNullOrEmpty(parts.Filter))
+            if (!string.IsNullOrWhiteSpace(parts.Filter))
             {
                 if (cache is not null)
                 {
@@ -73,21 +73,23 @@ namespace OdataQueryLite
                 }
             }
 
-            if (!string.IsNullOrEmpty(parts.OrderBy))
+            if (!string.IsNullOrWhiteSpace(parts.OrderBy))
                 _orderByClause = OrderByParser.Parse(parts.OrderBy);
 
             ExpandRequestNode? expand = null;
-            if (!string.IsNullOrEmpty(parts.Expand))
+            if (!string.IsNullOrWhiteSpace(parts.Expand))
                 expand = ExpandParser.Parse(parts.Expand);
             // OData allows $select at the same level as $expand without nesting it inside.
             // Top-level $select merges its field set onto the root node; lower-level $select
             // (inside $expand(...)) is handled by ExpandParser.Parse directly.
-            if (!string.IsNullOrEmpty(parts.Select))
+            if (!string.IsNullOrWhiteSpace(parts.Select))
             {
                 var fromSelect = ExpandParser.ParseSelect(parts.Select);
-                // Invariant: ExpandParser.Parse never assigns root-level SelectedFields (only the
-                // nested $select inside $expand(...) does), so this overwrite is always against
-                // null. Switching to a UnionWith would be valid but isn't needed today.
+                // Spec invariant: per OData v4.01 ABNF, `select` only appears inside
+                // `expandOption` (the parens after an expand item), so ExpandParser.Parse
+                // never assigns root-level SelectedFields. This overwrite is therefore
+                // always against null. Locked by ExpandParserTests.Parse_never_sets_root_SelectedFields
+                // — if that test fires, this merge must switch to UnionWith.
                 if (expand is null) expand = fromSelect;
                 else expand.SelectedFields = fromSelect.SelectedFields;
             }

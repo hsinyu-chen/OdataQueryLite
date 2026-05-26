@@ -15,6 +15,26 @@ namespace OdataQueryLite.Tests
             Assert.Empty(t.ExpandedProperties["Customer"].ExpandedProperties);
         }
 
+        // OData v4.01 ABNF: `expand = "$expand" EQ expandItem ...` and `select` only appears
+        // inside expandOption (the parens after each expand item) — it is impossible for a
+        // grammar-conformant $expand string to set root-level SelectedFields. Top-level
+        // $select goes through ExpandParser.ParseSelect on a fresh node instead. The
+        // OdataQueryOptions merge of top-level $select onto a $expand-built tree relies on
+        // this invariant; if a future ExpandParser change breaks it, this test fires and
+        // forces the merge to be rewritten (e.g. to UnionWith) rather than silently
+        // overwriting the spec-set fields.
+        [Theory]
+        [InlineData("Customer")]
+        [InlineData("Customer,Orders")]
+        [InlineData("Customer($select=Name)")]
+        [InlineData("Customer($expand=Orders)")]
+        [InlineData("Customer($select=Id;$expand=Orders($select=Total))")]
+        public void Parse_never_sets_root_SelectedFields(string input)
+        {
+            var t = ExpandParser.Parse(input);
+            Assert.Null(t.SelectedFields);
+        }
+
         [Fact]
         public void Select_inside_expand()
         {
