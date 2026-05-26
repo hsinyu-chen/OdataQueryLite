@@ -239,6 +239,68 @@ namespace OdataQueryLite.Tests
             Assert.DoesNotContain("PasswordOwn", available);
         }
 
+        public sealed class RowWithWrappers
+        {
+            public int Id { get; set; }
+            public System.Uri? Website { get; set; }
+            public System.Text.Json.Nodes.JsonNode? Metadata { get; set; }
+        }
+
+        [Fact]
+        public void Default_select_treats_Uri_and_JsonNode_as_scalars_not_navigations()
+        {
+            var src = new[]
+            {
+                new RowWithWrappers { Id = 1, Website = new System.Uri("https://example.com"), Metadata = null },
+            }.AsQueryable();
+
+            // No SelectedFields => default emits scalars only. Uri / JsonNode should be in,
+            // not omitted as "navigation".
+            var node = new ExpandRequestNode { SelectedFields = null };
+            // Need at least one expand to force projection — use empty expand on a non-existent
+            // collection won't work, so go through the $select path instead:
+            node = new ExpandRequestNode { SelectedFields = ["Id", "Website", "Metadata"] };
+            var projected = SelectExpandProjector.Project(src, node)
+                .Cast<Dictionary<string, object?>>().ToList();
+            // Uri serializes as object; emerges in the dict.
+            Assert.Equal("https://example.com/", projected[0]["Website"]?.ToString());
+            Assert.Null(projected[0]["Metadata"]);
+        }
+
+        [Fact]
+        public void ScalarClassTypes_extension_treats_custom_type_as_scalar()
+        {
+            // Host registers Order as scalar at startup; projection emits it directly rather
+            // than recursing into a nested dict. Mutation is set-once-at-startup pattern; we
+            // remove on Dispose to keep test isolation.
+            SelectExpandProjector.ScalarClassTypes.Add(typeof(Customer));
+            try
+            {
+                var node = new ExpandRequestNode { SelectedFields = ["Id", "Customer"] };
+                var projected = SelectExpandProjector.Project(Rows(), node)
+                    .Cast<Dictionary<string, object?>>().ToList();
+                // With Customer treated as scalar, the value is the Customer instance itself,
+                // not a nested Dictionary.
+                Assert.IsType<Customer>(projected[0]["Customer"]);
+            }
+            finally
+            {
+                SelectExpandProjector.ScalarClassTypes.Remove(typeof(Customer));
+            }
+        }
+
+        [Fact]
+        public void Expanding_a_scalar_property_throws()
+        {
+            // OData v4 §5.1.3: $expand is defined for navigation properties only. Asking to
+            // expand a scalar (Price : decimal) must surface a clean 400, not crash inside
+            // Queryable.Select at execution.
+            var opts = new OdataQueryOptions<Row>(new OdataQueryParts { Expand = "Price" });
+            var ex = Assert.Throws<OdataQueryException>(() => opts.Apply(Rows()));
+            Assert.Contains("Price", ex.Message);
+            Assert.Contains("not a navigation property", ex.Message);
+        }
+
         [Fact]
         public void Apply_select_expand_disabled_keeps_source_type()
         {

@@ -131,6 +131,13 @@ namespace OdataQueryLite.ExpressionBuilding
                 Expression? value = null;
                 if (isExpanded)
                 {
+                    // OData v4 Part 2 §5.1.3: $expand applies to navigation properties only.
+                    // Without this guard, `?$expand=Price` would dispatch into BuildExpandedValue
+                    // for a scalar (decimal) and produce an InvalidOperationException buried
+                    // inside Queryable.Select at execution. Surface a 400 at parse time instead.
+                    if (!IsNavigationLike(prop.PropertyType))
+                        throw new OdataQueryException(
+                            $"Property '{name}' on type '{t.Name}' is not a navigation property and cannot be $expanded.");
                     value = BuildExpandedValue(prop, source, childNode!);
                 }
                 else if (isScalarSelected && !IsNavigationLike(prop.PropertyType))
@@ -189,14 +196,37 @@ namespace OdataQueryLite.ExpressionBuilding
             return Expression.Condition(isNull, nullDict, dictExpr);
         }
 
+        /// <summary>
+        /// Class types that look like navigation properties (reference types, not strings) but
+        /// should serialize as scalar values rather than being recursed into as sub-entities.
+        /// Defaults cover the BCL's well-known "wrapper" types — <see cref="System.Uri"/>,
+        /// <see cref="System.Text.Json.Nodes.JsonNode"/>, <see cref="System.Text.Json.JsonDocument"/>.
+        /// Host applications can <c>Add</c> their own value-object types at composition time;
+        /// the set is read on every projection build, so additions made before the first
+        /// request are picked up. Mutations after projection lambdas have been built (and
+        /// cached) are not retroactive.
+        /// </summary>
+        /// <remarks>
+        /// Not thread-safe — treat as set-once configuration mutated during host startup,
+        /// not as a per-request switch.
+        /// </remarks>
+        public static readonly HashSet<Type> ScalarClassTypes =
+        [
+            typeof(System.Uri),
+            typeof(System.Text.Json.Nodes.JsonNode),
+            typeof(System.Text.Json.JsonDocument),
+        ];
+
         private static bool IsNavigationLike(
             [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.Interfaces)] Type t)
         {
-            // string + byte[] are scalar (OData primitives). All other IEnumerable<T>, class
-            // types, and interface types (covers `public ICustomer Customer { get; set; }`
-            // pattern) count as navigation: $select on them in absence of $expand has no
-            // defined semantics here, so we omit by default.
+            // string + byte[] are scalar (OData primitives). Host-extensible whitelist covers
+            // BCL wrappers (Uri, JsonNode, JsonDocument) plus anything the host registered.
+            // All other IEnumerable<T>, class types, and interface types (covers
+            // `public ICustomer Customer { get; set; }` pattern) count as navigation: $select
+            // on them in absence of $expand has no defined semantics here, so we omit by default.
             if (t == typeof(string) || t == typeof(byte[])) return false;
+            if (ScalarClassTypes.Contains(t)) return false;
             if (MemberPathResolver.GetEnumerableElementType(t) is not null) return true;
             if (t.IsClass || t.IsInterface) return true;
             return false;

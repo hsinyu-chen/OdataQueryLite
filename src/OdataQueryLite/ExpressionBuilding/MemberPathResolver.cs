@@ -103,10 +103,11 @@ namespace OdataQueryLite.ExpressionBuilding
         {
             foreach (var attr in prop.GetCustomAttributes(inherit: true))
             {
+                // Cheap concrete-type check first; FullName allocation only on miss.
+                if (attr is OdataIgnoreAttribute) return true;
                 var fullName = attr.GetType().FullName;
                 if (fullName == NewtonsoftJsonIgnoreFullName) return true;
                 if (fullName == SystemTextJsonIgnoreFullName) return true;
-                if (attr is OdataIgnoreAttribute) return true;
             }
             return false;
         }
