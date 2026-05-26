@@ -40,7 +40,10 @@ app.MapGet("/items", async (OdataQueryRequest<Item> q, AppDbContext db) =>
     return Results.Ok(new
     {
         total = q.Options.Count ? await result.Unpaged.LongCountAsync() : (long?)null,
-        data  = await result.Data.ToListAsync(),
+        // result.Data is IQueryable — element type is Item when no $select/$expand is
+        // requested, otherwise Dictionary<string, object?>. Cast<object>() lets the JSON
+        // serializer pick up the runtime element type either way.
+        data  = await result.Data.Cast<object>().ToListAsync(),
     });
 });
 
@@ -61,7 +64,7 @@ public class ItemsController(AppDbContext db) : ControllerBase
         return Ok(new
         {
             total = q.Count ? await result.Unpaged.LongCountAsync() : (long?)null,
-            data  = await result.Data.ToListAsync(),
+            data  = await result.Data.Cast<object>().ToListAsync(),
         });
     }
 }
@@ -84,7 +87,8 @@ var opts = new OdataQueryOptions<Item>(new OdataQueryParts
 
 var result = opts.Apply(items.AsQueryable());
 long total = result.Unpaged.LongCount();
-List<Item> page = result.Data.ToList();
+// No $select/$expand here, so Data's runtime element type is Item.
+List<Item> page = result.Data.Cast<Item>().ToList();
 ```
 
 ## Surface
@@ -97,8 +101,8 @@ List<Item> page = result.Data.ToList();
 | `$filter` — lambdas `Items/any(o: o/Status eq 'X')`, `Items/all(...)` | ✅ |
 | `$filter` — collection count `Items/$count gt 0` | ✅ |
 | `$orderby` — multi-key, `desc`, nested paths, collection `/$count` | ✅ |
-| `$expand` — nested, slash chains, inner `$select`/`$expand` | ✅ parsed; projection deferred (see roadmap) |
-| `$select` — flat names, nested paths | ✅ parsed; projection deferred (see roadmap) |
+| `$expand` — nested, slash chains, inner `$select`/`$expand` | ✅ parsed + applied (`Dictionary<string, object?>` projection) |
+| `$select` — flat names, nested paths | ✅ parsed + applied (honors `[JsonIgnore]` from Newtonsoft / STJ + `[OdataIgnore]`) |
 | `$top` / `$skip` / `$count` | ✅ applied (`$count` exposes `Unpaged` for caller to materialize) |
 | `$apply` | ❌ — `UnsupportedQueryOptionException` at construction |
 
@@ -125,7 +129,7 @@ Cache is keyed on `(entityType, normalized-shape, parameter-types)` — `?$filte
 - [x] `OdataQueryOptions<T>` orchestrator + `OrderByApplier`
 - [x] ASP.NET Core integration package (MVC `IModelBinder`, Minimal-API `OdataQueryRequest<T>`, error-mapping middleware, idempotent `AddOdataQueryLite()` split per ASP.NET Core convention)
 - [x] `IQueryable` return-shape redesign (`QueryResult.Unpaged` deferred enumeration → no EF-Core sub-package needed)
-- [ ] `$select` / `$expand` projection applied to the returned `IQueryable` (currently parsed-only; engine exposes the merged `ExpandRequestNode` for whitelist validation via `ExpandSubsumption`)
+- [x] `$select` / `$expand` projection applied to the returned `IQueryable` (`SelectExpandProjector` — emits `Dictionary<string, object?>` projection, EF Core translates to flat `SELECT col1, col2`; honors `[JsonIgnore]` from both `Newtonsoft.Json` and `System.Text.Json.Serialization` plus its own `[OdataIgnore]`)
 
 ## Trim / AOT
 
