@@ -134,7 +134,7 @@ namespace OdataQueryLite
         /// <exception cref="ArgumentNullException"><paramref name="source"/> is <see langword="null"/>.</exception>
         [RequiresUnreferencedCode("Delegates to ICompiledQuery<T>.Apply / OrderByApplier.Apply which build Expression trees over T.")]
         [RequiresDynamicCode("Delegates to ICompiledQuery<T>.Apply / OrderByApplier.Apply which compile generic delegates at runtime.")]
-        public QueryResult Apply(IQueryable<T> source, IApplyOptions? options = null)
+        public QueryResult<T> Apply(IQueryable<T> source, IApplyOptions? options = null)
         {
             ArgumentNullException.ThrowIfNull(source);
             var opt = options ?? new ApplyOptions();
@@ -161,7 +161,7 @@ namespace OdataQueryLite
                 if (Top is int top) q = q.Take(top);
             }
 
-            return new QueryResult(q, unpaged);
+            return new QueryResult<T>(q, unpaged);
         }
     }
 }

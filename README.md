@@ -39,8 +39,8 @@ app.MapGet("/items", async (OdataQueryRequest<Item> q, AppDbContext db) =>
     var result = q.Options.Apply(db.Items);
     return Results.Ok(new
     {
-        total = q.Options.Count ? await result.Unpaged.Cast<Item>().LongCountAsync() : (long?)null,
-        data  = await result.Data.Cast<Item>().ToListAsync(),
+        total = q.Options.Count ? await result.Unpaged.LongCountAsync() : (long?)null,
+        data  = await result.Data.ToListAsync(),
     });
 });
 
@@ -60,8 +60,8 @@ public class ItemsController(AppDbContext db) : ControllerBase
         var result = q.Apply(db.Items);
         return Ok(new
         {
-            total = q.Count ? await result.Unpaged.Cast<Item>().LongCountAsync() : (long?)null,
-            data  = await result.Data.Cast<Item>().ToListAsync(),
+            total = q.Count ? await result.Unpaged.LongCountAsync() : (long?)null,
+            data  = await result.Data.ToListAsync(),
         });
     }
 }
@@ -83,8 +83,8 @@ var opts = new OdataQueryOptions<Item>(new OdataQueryParts
 });
 
 var result = opts.Apply(items.AsQueryable());
-long total = result.Unpaged.Cast<Item>().LongCount();
-List<Item> page = result.Data.Cast<Item>().ToList();
+long total = result.Unpaged.LongCount();
+List<Item> page = result.Data.ToList();
 ```
 
 ## Surface

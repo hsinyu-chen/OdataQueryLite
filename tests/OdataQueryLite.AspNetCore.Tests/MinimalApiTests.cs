@@ -56,8 +56,8 @@ namespace OdataQueryLite.AspNetCore.Tests
                                 var result = q.Options.Apply(_items.AsQueryable());
                                 return Results.Ok(new
                                 {
-                                    Total = q.Options.Count ? result.Unpaged.Cast<Item>().LongCount() : (long?)null,
-                                    Data = result.Data.Cast<Item>().Select(i => new { i.Id, i.Name, i.Price }).ToList(),
+                                    Total = q.Options.Count ? result.Unpaged.LongCount() : (long?)null,
+                                    Data = result.Data.Select(i => new { i.Id, i.Name, i.Price }).ToList(),
                                 });
                             });
                         });

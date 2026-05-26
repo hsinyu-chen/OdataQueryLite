@@ -5,6 +5,7 @@ namespace OdataQueryLite
     /// <summary>
     /// Result of <see cref="OdataQueryOptions{T}.Apply(IQueryable{T}, IApplyOptions?)"/>.
     /// </summary>
+    /// <typeparam name="T">Entity type; both <see cref="Data"/> and <see cref="Unpaged"/> carry <c>IQueryable&lt;T&gt;</c>.</typeparam>
     /// <param name="Data">The filtered, ordered, and paged query — what the client will iterate.</param>
     /// <param name="Unpaged">
     /// The filtered-but-unpaged query (no <c>$orderby</c> / <c>$top</c> / <c>$skip</c> applied). Callers
@@ -15,5 +16,5 @@ namespace OdataQueryLite
     /// Engine deliberately doesn't enumerate so it stays provider-agnostic and async-friendly without an
     /// EF-Core sub-package.
     /// </param>
-    public readonly record struct QueryResult(IQueryable Data, IQueryable Unpaged);
+    public readonly record struct QueryResult<T>(IQueryable<T> Data, IQueryable<T> Unpaged);
 }

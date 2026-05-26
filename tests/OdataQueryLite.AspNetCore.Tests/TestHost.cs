@@ -42,8 +42,8 @@ namespace OdataQueryLite.AspNetCore.Tests
             // requests don't pay the count query — engine always exposes Unpaged, host decides.
             return Ok(new
             {
-                Total = q.Count ? result.Unpaged.Cast<Item>().LongCount() : (long?)null,
-                Data = result.Data.Cast<Item>().Select(i => new { i.Id, i.Name, i.Price }).ToList(),
+                Total = q.Count ? result.Unpaged.LongCount() : (long?)null,
+                Data = result.Data.Select(i => new { i.Id, i.Name, i.Price }).ToList(),
             });
         }
     }
