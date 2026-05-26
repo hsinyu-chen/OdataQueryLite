@@ -1,8 +1,10 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/OdataQueryLite/OdataQueryLite.csproj" />
+    <Project Path="src/OdataQueryLite.AspNetCore/OdataQueryLite.AspNetCore.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/OdataQueryLite.Tests/OdataQueryLite.Tests.csproj" />
+    <Project Path="tests/OdataQueryLite.AspNetCore.Tests/OdataQueryLite.AspNetCore.Tests.csproj" />
   </Folder>
 </Solution>
