@@ -3,6 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using OdataQueryLite.Caching;
 
 namespace OdataQueryLite.AspNetCore
@@ -36,6 +37,9 @@ namespace OdataQueryLite.AspNetCore
         public static ValueTask<OdataQueryRequest<T>?> BindAsync(HttpContext context)
         {
             ArgumentNullException.ThrowIfNull(context);
+            var logger = context.RequestServices.GetService<ILoggerFactory>()
+                ?.CreateLogger("OdataQueryLite.AspNetCore.OdataQueryRequest");
+            logger?.LogDebug("Binding OdataQueryRequest<{EntityType}> from {Query}", typeof(T).Name, context.Request.QueryString.Value);
             var parts = OdataQueryPartsFactory.FromQuery(context.Request.Query);
             var cache = context.RequestServices.GetService<QueryCompileCache>();
             var options = new OdataQueryOptions<T>(parts, cache);
