@@ -34,10 +34,8 @@ namespace OdataQueryLite.AspNetCore
         /// <param name="context">Current HTTP context.</param>
         /// <returns>The bound request wrapper.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="context"/> is <see langword="null"/>.</exception>
-        [UnconditionalSuppressMessage("Trimming", "IL2026:RequiresUnreferencedCode",
-            Justification = "OdataQueryOptions<T> ctor's trim requirements are declared on AddOdataQueryLite() entry point.")]
-        [UnconditionalSuppressMessage("AOT", "IL3050:RequiresDynamicCode",
-            Justification = "OdataQueryOptions<T> ctor's dynamic-code requirements are declared on AddOdataQueryLite() entry point.")]
+        [RequiresUnreferencedCode("Constructs OdataQueryOptions<T> which reflects over T's public properties to compile filter Expression trees at runtime.")]
+        [RequiresDynamicCode("Constructs OdataQueryOptions<T> which builds Expression<Func<T, ...>> at runtime; AOT may require dynamic-code support.")]
         public static ValueTask<OdataQueryRequest<T>?> BindAsync(HttpContext context)
         {
             ArgumentNullException.ThrowIfNull(context);
