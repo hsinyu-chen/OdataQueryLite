@@ -3,19 +3,28 @@ using System.Text;
 
 namespace OdataQueryLite.Parsing
 {
-    // Lexer output wrapper. Three renderings:
-    //   ToString()           — verbatim re-render (debug).
-    //   ToShapeString()      — typed placeholders (?str / ?num / ?bool / ?date / ?null);
-    //                          for debugging/inspection.
-    //   ToShapeString(typed=false) — single `?` placeholder for all literals; used as the
-    //                                compiled-query cache key so null doesn't fragment cache
-    //                                shape vs the same template called with non-null values.
+    /// <summary>
+    /// Wrapper around an <see cref="OdataLexer"/> token list. Exposes three renderings: verbatim
+    /// (<see cref="ToString"/>), typed shape (<see cref="ToShapeString"/> with <c>typed: true</c>), and
+    /// untyped shape (the cache-key form, where every literal collapses to a single <c>?</c>).
+    /// </summary>
+    /// <param name="tokens">Tokens as emitted by <see cref="OdataLexer.Tokenize"/>.</param>
     public sealed class LexedQuery(IReadOnlyList<Token> tokens)
     {
+        /// <summary>The underlying token list (including the terminating <see cref="TokenKind.EOF"/>).</summary>
         public IReadOnlyList<Token> Tokens { get; } = tokens;
 
+        /// <summary>Verbatim re-rendering of the lexed input — handy for debugging.</summary>
+        /// <returns>The reconstructed query string.</returns>
         public override string ToString() => Render(LiteralRenderMode.Verbatim);
 
+        /// <summary>
+        /// Renders the query with literal placeholders. Typed (<c>?str</c> / <c>?num</c> / ...) is for
+        /// debugging; untyped (single <c>?</c>) is the form used as the compiled-query cache key so a null
+        /// vs non-null literal doesn't fragment the cache.
+        /// </summary>
+        /// <param name="typed">Use kind-tagged placeholders when <see langword="true"/>; single <c>?</c> otherwise.</param>
+        /// <returns>The rendered shape.</returns>
         public string ToShapeString(bool typed = true) =>
             Render(typed ? LiteralRenderMode.Typed : LiteralRenderMode.Untyped);
 

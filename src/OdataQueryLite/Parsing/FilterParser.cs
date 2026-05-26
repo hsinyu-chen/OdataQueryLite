@@ -5,10 +5,20 @@ using OdataQueryLite.Ast;
 
 namespace OdataQueryLite.Parsing
 {
+    /// <summary>Parses raw <c>$filter</c> strings into a <see cref="FilterParseResult"/> AST.</summary>
     public static class FilterParser
     {
+        /// <summary>Tokenizes and parses <paramref name="input"/>.</summary>
+        /// <param name="input">Raw <c>$filter</c> value.</param>
+        /// <returns>The parsed AST plus literal slots.</returns>
+        /// <exception cref="FilterSyntaxException">The input does not match the OData <c>$filter</c> grammar.</exception>
         public static FilterParseResult Parse(string input) => Parse(OdataLexer.Tokenize(input));
 
+        /// <summary>Parses an already-tokenized <paramref name="lexed"/> stream.</summary>
+        /// <param name="lexed">Lexer output for the filter string.</param>
+        /// <returns>The parsed AST plus literal slots.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="lexed"/> is <see langword="null"/>.</exception>
+        /// <exception cref="FilterSyntaxException">The tokens do not match the OData <c>$filter</c> grammar.</exception>
         public static FilterParseResult Parse(LexedQuery lexed)
         {
             ArgumentNullException.ThrowIfNull(lexed);

@@ -37,10 +37,13 @@ namespace OdataQueryLite.AspNetCore.Tests
         public IActionResult Get(OdataQueryOptions<Item> q)
         {
             var result = q.Apply(_items);
+            // Sync LongCount() against in-memory IQueryable; EF Core callers would await
+            // LongCountAsync() on result.Unpaged instead. Gated on q.Count so $count=false
+            // requests don't pay the count query — engine always exposes Unpaged, host decides.
             return Ok(new
             {
-                Total = result.TotalCount,
-                Data = result.Data.Cast<Item>().Select(i => new { i.Id, i.Name, i.Price }).ToList(),
+                Total = q.Count ? result.Unpaged.LongCount() : (long?)null,
+                Data = result.Data.Select(i => new { i.Id, i.Name, i.Price }).ToList(),
             });
         }
     }

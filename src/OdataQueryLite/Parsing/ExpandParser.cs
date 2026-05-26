@@ -2,8 +2,16 @@ using OdataQueryLite.Ast;
 
 namespace OdataQueryLite.Parsing
 {
+    /// <summary>Parses raw <c>$expand</c> / <c>$select</c> strings into an <see cref="ExpandRequestNode"/> tree.</summary>
     public static class ExpandParser
     {
+        /// <summary>
+        /// Parses a raw <c>$expand</c> string. Supports slash-chained nested expands (<c>Customer/Orders</c>),
+        /// parenthesized inner options (<c>$select=...;$expand=...</c>), and comma-separated siblings.
+        /// </summary>
+        /// <param name="input">Raw <c>$expand</c> value.</param>
+        /// <returns>The parsed tree (a root node whose <see cref="ExpandRequestNode.ExpandedProperties"/> holds the top-level expansions).</returns>
+        /// <exception cref="FilterSyntaxException">The input does not match the OData <c>$expand</c> grammar.</exception>
         public static ExpandRequestNode Parse(string input)
         {
             var s = new ParserState(OdataLexer.Tokenize(input).Tokens);
@@ -14,6 +22,14 @@ namespace OdataQueryLite.Parsing
             return root;
         }
 
+        /// <summary>
+        /// Parses a top-level <c>$select</c> string. Accepts comma-separated member paths
+        /// (e.g. <c>Name,Customer/Phone</c>) and returns a single-node tree whose
+        /// <see cref="ExpandRequestNode.SelectedFields"/> holds the parsed set.
+        /// </summary>
+        /// <param name="input">Raw <c>$select</c> value.</param>
+        /// <returns>An <see cref="ExpandRequestNode"/> carrying the selected field set.</returns>
+        /// <exception cref="FilterSyntaxException">The input does not match the OData <c>$select</c> grammar.</exception>
         public static ExpandRequestNode ParseSelect(string input)
         {
             var s = new ParserState(OdataLexer.Tokenize(input).Tokens);

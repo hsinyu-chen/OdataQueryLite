@@ -4,11 +4,21 @@ using Microsoft.AspNetCore.Http;
 
 namespace OdataQueryLite.AspNetCore
 {
-    // Pure mapping IQueryCollection -> OdataQueryParts. Extracted from the model binder so
-    // it can be unit-tested without spinning up MVC and so non-MVC hosts (minimal APIs,
-    // background jobs reading captured query strings) can reuse it.
+    /// <summary>
+    /// Pure mapping from <see cref="IQueryCollection"/> to <see cref="OdataQueryParts"/>. Extracted from the
+    /// model binder so it can be unit-tested without spinning up MVC and reused by non-MVC hosts (Minimal
+    /// APIs, background jobs reading captured query strings).
+    /// </summary>
     public static class OdataQueryPartsFactory
     {
+        /// <summary>
+        /// Reads the recognised <c>$</c>-options from <paramref name="query"/>. Each option may appear at
+        /// most once; repeated keys raise <see cref="OdataQueryException"/> per OData v4.01 Part 1 §11.2.
+        /// </summary>
+        /// <param name="query">Request query collection.</param>
+        /// <returns>Populated <see cref="OdataQueryParts"/>.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="query"/> is <see langword="null"/>.</exception>
+        /// <exception cref="OdataQueryException">A <c>$</c>-option appears multiple times, or <c>$top</c> / <c>$skip</c> / <c>$count</c> fails to parse.</exception>
         public static OdataQueryParts FromQuery(IQueryCollection query)
         {
             ArgumentNullException.ThrowIfNull(query);

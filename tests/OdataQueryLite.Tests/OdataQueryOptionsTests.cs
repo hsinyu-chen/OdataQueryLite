@@ -28,15 +28,16 @@ namespace OdataQueryLite.Tests
         {
             var opts = new OdataQueryOptions<Item>(new OdataQueryParts());
             var result = opts.Apply(Rows());
-            Assert.Null(result.TotalCount);
-            Assert.Equal(5, result.Data.Cast<Item>().Count());
+            // Unpaged is always populated; host decides whether to enumerate based on opts.Count.
+            Assert.Equal(5, result.Unpaged.LongCount());
+            Assert.Equal(5, result.Data.Count());
         }
 
         [Fact]
         public void Filter_only_applies_predicate()
         {
             var opts = new OdataQueryOptions<Item>(new OdataQueryParts { Filter = "Price gt 25" });
-            var matched = opts.Apply(Rows()).Data.Cast<Item>().ToList();
+            var matched = opts.Apply(Rows()).Data.ToList();
             Assert.Equal([1, 3, 5], matched.Select(x => x.Id));
         }
 
@@ -50,14 +51,14 @@ namespace OdataQueryLite.Tests
                 Skip = 1,
                 Top = 2,
             });
-            var page = opts.Apply(Rows()).Data.Cast<Item>().ToList();
+            var page = opts.Apply(Rows()).Data.ToList();
             Assert.Equal([5, 1], page.Select(x => x.Id));
         }
 
         [Fact]
-        public void Count_reflects_filtered_pre_paged_set()
+        public void Unpaged_reflects_filtered_pre_paged_set()
         {
-            // Filter narrows to 3 rows; paging only emits 1; TotalCount must still be 3.
+            // Filter narrows to 3 rows; paging only emits 1; Unpaged.LongCount() must still be 3.
             var opts = new OdataQueryOptions<Item>(new OdataQueryParts
             {
                 Filter = "Price gt 25",
@@ -65,25 +66,23 @@ namespace OdataQueryLite.Tests
                 Count = true,
             });
             var result = opts.Apply(Rows());
-            Assert.Equal(3, result.TotalCount);
-            Assert.Single(result.Data.Cast<Item>());
+            Assert.Equal(3, result.Unpaged.LongCount());
+            Assert.Single(result.Data);
         }
 
         [Fact]
-        public void Count_only_runs_when_options_request_count()
+        public void Count_wire_flag_exposed_for_host_decision()
         {
-            var opts = new OdataQueryOptions<Item>(new OdataQueryParts { Count = true });
-            var noCount = opts.Apply(Rows(), new ApplyOptions().ApplyCount(false));
-            Assert.Null(noCount.TotalCount);
-        }
-
-        [Fact]
-        public void Count_only_runs_when_query_sets_count_flag()
-        {
-            // $count=false on the wire -> Count semantics off even with ApplyCount(true).
-            var opts = new OdataQueryOptions<Item>(new OdataQueryParts { Count = false });
-            var result = opts.Apply(Rows());
-            Assert.Null(result.TotalCount);
+            // $count=true on the wire -> opts.Count is true. Host inspects this to decide
+            // whether to materialize result.Unpaged into the response payload. Engine has
+            // no opinion — Unpaged is always populated.
+            var withCount = new OdataQueryOptions<Item>(new OdataQueryParts { Count = true });
+            var withoutCount = new OdataQueryOptions<Item>(new OdataQueryParts { Count = false });
+            Assert.True(withCount.Count);
+            Assert.False(withoutCount.Count);
+            // Both still populate Unpaged.
+            Assert.Equal(5, withCount.Apply(Rows()).Unpaged.LongCount());
+            Assert.Equal(5, withoutCount.Apply(Rows()).Unpaged.LongCount());
         }
 
         [Fact]
@@ -91,7 +90,7 @@ namespace OdataQueryLite.Tests
         {
             var opts = new OdataQueryOptions<Item>(new OdataQueryParts { Top = 1, Skip = 2 });
             var result = opts.Apply(Rows(), new ApplyOptions().ApplyPaging(false));
-            Assert.Equal(5, result.Data.Cast<Item>().Count());
+            Assert.Equal(5, result.Data.Count());
         }
 
         [Fact]
@@ -100,7 +99,7 @@ namespace OdataQueryLite.Tests
             var opts = new OdataQueryOptions<Item>(new OdataQueryParts { OrderBy = "Price desc" });
             var rowsAsGiven = Rows().ToList();
             var result = opts.Apply(Rows(), new ApplyOptions().ApplyOrderBy(false));
-            Assert.Equal(rowsAsGiven.Select(x => x.Id), result.Data.Cast<Item>().Select(x => x.Id));
+            Assert.Equal(rowsAsGiven.Select(x => x.Id), result.Data.Select(x => x.Id));
         }
 
         [Fact]
@@ -123,7 +122,7 @@ namespace OdataQueryLite.Tests
         public void Top_zero_returns_empty_page()
         {
             var opts = new OdataQueryOptions<Item>(new OdataQueryParts { Top = 0 });
-            Assert.Empty(opts.Apply(Rows()).Data.Cast<Item>());
+            Assert.Empty(opts.Apply(Rows()).Data);
         }
 
         [Fact]

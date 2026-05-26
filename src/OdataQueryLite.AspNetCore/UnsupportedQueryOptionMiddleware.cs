@@ -7,15 +7,29 @@ using OdataQueryLite.Parsing;
 
 namespace OdataQueryLite.AspNetCore
 {
-    // Catches OdataQueryException at the pipeline boundary and converts to HTTP 400.
-    // Without this, model-binder parse failures bubble as 500 (framework treats them as
-    // unhandled), masking what was actually a client mistake. UnsupportedQueryOptionException
-    // (a subclass) is mapped the same way — both are client-input errors per the
-    // OdataQueryException contract.
+    /// <summary>
+    /// Catches <see cref="OdataQueryException"/> at the pipeline boundary and converts to HTTP 400. Without
+    /// this, model-binder parse failures bubble as 500 (framework treats them as unhandled), masking what
+    /// was actually a client mistake.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="UnsupportedQueryOptionException"/> (a subclass) is mapped the same way — both are
+    /// client-input errors per the <see cref="OdataQueryException"/> contract — with the offending option
+    /// name surfaced in the JSON payload.
+    /// </remarks>
+    /// <param name="next">Next delegate in the pipeline.</param>
+    /// <param name="logger">Logger for the post-headers fallback path.</param>
     public sealed class UnsupportedQueryOptionMiddleware(
         RequestDelegate next,
         ILogger<UnsupportedQueryOptionMiddleware> logger)
     {
+        /// <summary>
+        /// Invokes the next delegate and converts <see cref="OdataQueryException"/> failures into HTTP 400
+        /// JSON responses. When the response has already started, the exception is rethrown.
+        /// </summary>
+        /// <param name="context">Current HTTP context.</param>
+        /// <returns>A task that completes when the request finishes.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="context"/> is <see langword="null"/>.</exception>
         public async Task InvokeAsync(HttpContext context)
         {
             ArgumentNullException.ThrowIfNull(context);

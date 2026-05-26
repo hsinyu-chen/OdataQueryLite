@@ -4,13 +4,26 @@ using System.Text;
 
 namespace OdataQueryLite.Parsing
 {
+    /// <summary>
+    /// Parse / lexer failure at a specific character offset within the source query string. The position is
+    /// appended to the exception message so logs can show the offending token in context.
+    /// </summary>
+    /// <param name="message">Human-readable description of the lex/parse error.</param>
+    /// <param name="position">Zero-based character offset into the original input.</param>
     public sealed class FilterSyntaxException(string message, int position) : OdataQueryException($"{message} (position {position})")
     {
+        /// <summary>Zero-based character offset into the original input where the error was detected.</summary>
         public int Position { get; } = position;
     }
 
+    /// <summary>OData v4 token-level lexer covering the <c>$filter</c> / <c>$orderby</c> / <c>$expand</c> / <c>$select</c> grammars.</summary>
     public static class OdataLexer
     {
+        /// <summary>Tokenizes <paramref name="input"/>.</summary>
+        /// <param name="input">Raw query string.</param>
+        /// <returns>A <see cref="LexedQuery"/> wrapping the produced token list (with a trailing <see cref="TokenKind.EOF"/>).</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="input"/> is <see langword="null"/>.</exception>
+        /// <exception cref="FilterSyntaxException">An unrecognised character or unterminated string literal is encountered.</exception>
         public static LexedQuery Tokenize(string input)
         {
             ArgumentNullException.ThrowIfNull(input);
