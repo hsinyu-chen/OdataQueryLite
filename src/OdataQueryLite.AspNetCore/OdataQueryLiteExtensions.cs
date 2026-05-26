@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
@@ -29,6 +30,12 @@ namespace OdataQueryLite.AspNetCore
 
             services.Configure<MvcOptions>(opts =>
             {
+                // Guard against duplicate registration when AddOdataQueryLite() is invoked
+                // by several module initializers or by a test fixture that rebuilds the
+                // service collection: a second insert would silently double the provider list
+                // and force every action's parameter metadata to be matched twice.
+                if (opts.ModelBinderProviders.OfType<OdataQueryOptionsBinderProvider>().Any())
+                    return;
                 // Insert at index 0 so we win over the default complex-object binder when the
                 // parameter type matches OdataQueryOptions<>. Provider checks the generic
                 // definition before claiming the binding, so non-matching types are passed
