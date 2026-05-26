@@ -16,15 +16,12 @@ namespace OdataQueryLite.AspNetCore
         RequestDelegate next,
         ILogger<UnsupportedQueryOptionMiddleware> logger)
     {
-        private readonly RequestDelegate _next = next;
-        private readonly ILogger<UnsupportedQueryOptionMiddleware> _logger = logger;
-
         public async Task InvokeAsync(HttpContext context)
         {
             ArgumentNullException.ThrowIfNull(context);
             try
             {
-                await _next(context);
+                await next(context);
             }
             catch (OdataQueryException ex)
             {
@@ -33,7 +30,7 @@ namespace OdataQueryLite.AspNetCore
                     // Cannot rewrite a response that's already on the wire — let it surface
                     // so the user sees the framework's default behavior rather than a
                     // half-streamed JSON payload.
-                    _logger.LogWarning(ex, "OdataQueryException raised after response started; cannot convert to 400.");
+                    logger.LogWarning(ex, "OdataQueryException raised after response started; cannot convert to 400.");
                     throw;
                 }
                 context.Response.Clear();
@@ -44,7 +41,7 @@ namespace OdataQueryLite.AspNetCore
                     Error: "BadRequest",
                     Message: ex.Message,
                     Option: ex is UnsupportedQueryOptionException uq ? uq.OptionName : null);
-                await JsonSerializer.SerializeAsync(context.Response.Body, payload, ErrorPayloadJsonContext.Default.ErrorPayload);
+                await JsonSerializer.SerializeAsync(context.Response.Body, payload, ErrorPayloadJsonContext.Default.ErrorPayload, context.RequestAborted);
             }
         }
 

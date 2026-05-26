@@ -28,6 +28,12 @@ namespace OdataQueryLite.AspNetCore
         private static string? ReadString(IQueryCollection query, string key)
         {
             if (!query.TryGetValue(key, out var values)) return null;
+            // OData v4.01 Part 1 §11.2: "The same system query option MUST NOT be specified
+            // more than once." Without this check StringValues silently joins repeats with
+            // a comma, which would turn `?$top=5&$top=10` into `"5,10"` and surface as a
+            // confusing int-parse error rather than the actual protocol violation.
+            if (values.Count > 1)
+                throw new OdataQueryException($"{key} must not appear more than once.");
             var s = values.ToString();
             return string.IsNullOrWhiteSpace(s) ? null : s;
         }

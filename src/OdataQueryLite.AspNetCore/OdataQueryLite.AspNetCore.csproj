@@ -26,8 +26,4 @@
     <ProjectReference Include="..\OdataQueryLite\OdataQueryLite.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <InternalsVisibleTo Include="OdataQueryLite.AspNetCore.Tests" />
-  </ItemGroup>
-
 </Project>
