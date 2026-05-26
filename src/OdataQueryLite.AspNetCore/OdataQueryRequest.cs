@@ -39,7 +39,8 @@ namespace OdataQueryLite.AspNetCore
             ArgumentNullException.ThrowIfNull(context);
             var logger = context.RequestServices.GetService<ILoggerFactory>()
                 ?.CreateLogger("OdataQueryLite.AspNetCore.OdataQueryRequest");
-            logger?.LogDebug("Binding OdataQueryRequest<{EntityType}> from {Query}", typeof(T).Name, context.Request.QueryString.Value);
+            if (logger is not null)
+                AspNetCoreLog.BindingRequest(logger, typeof(T).Name, context.Request.QueryString.Value);
             var parts = OdataQueryPartsFactory.FromQuery(context.Request.Query);
             var cache = context.RequestServices.GetService<QueryCompileCache>();
             var options = new OdataQueryOptions<T>(parts, cache);

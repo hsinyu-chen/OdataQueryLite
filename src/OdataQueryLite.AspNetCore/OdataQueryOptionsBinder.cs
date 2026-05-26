@@ -37,7 +37,8 @@ namespace OdataQueryLite.AspNetCore
             // OdataQueryLite is actually claiming the parameter without rebuilding.
             var logger = http.RequestServices.GetService<ILoggerFactory>()
                 ?.CreateLogger("OdataQueryLite.AspNetCore.OdataQueryOptionsBinder");
-            logger?.LogDebug("Binding OdataQueryOptions<{EntityType}> from {Query}", typeof(T).Name, http.Request.QueryString.Value);
+            if (logger is not null)
+                AspNetCoreLog.BindingOptions(logger, typeof(T).Name, http.Request.QueryString.Value);
             var parts = OdataQueryPartsFactory.FromQuery(http.Request.Query);
             // QueryCompileCache is optional — host opts in via AddOdataQueryLite() default
             // (or by registering it themselves). Absent registration = no cross-request
