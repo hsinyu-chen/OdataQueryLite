@@ -21,14 +21,18 @@ namespace OdataQueryLite.AspNetCore
     {
         // Registers the optional process-wide QueryCompileCache. Does NOT touch MvcOptions,
         // so a pure Minimal-API host doesn't carry a dead IConfigureOptions<MvcOptions>
-        // callback. MVC hosts get the binder via the IMvcBuilder overload below.
+        // callback. MVC hosts get the binder via the IMvcBuilder overload below. Accepts
+        // an Action<OdataQueryLiteOptions> for tunable knobs (cache cap, etc.) — IOptions
+        // pattern lets us add more knobs later without breaking the call signature.
         public static IServiceCollection AddOdataQueryLite(
             this IServiceCollection services,
-            bool useCache = true)
+            Action<OdataQueryLiteOptions>? configure = null)
         {
             ArgumentNullException.ThrowIfNull(services);
-            if (useCache)
-                services.TryAddSingleton<QueryCompileCache>();
+            var opts = new OdataQueryLiteOptions();
+            configure?.Invoke(opts);
+            if (opts.UseCache)
+                services.TryAddSingleton(_ => new QueryCompileCache(opts.MaxCacheEntries));
             return services;
         }
 
