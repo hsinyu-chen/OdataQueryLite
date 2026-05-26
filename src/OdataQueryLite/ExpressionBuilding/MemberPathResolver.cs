@@ -30,7 +30,12 @@ namespace OdataQueryLite.ExpressionBuilding
             // either as a collection would reject `$orderby=Name` (the round-3 collection-orderby
             // guard) and `$orderby=RowVersion` (byte[] concurrency tokens).
             if (t == typeof(string) || t == typeof(byte[])) return null;
-            if (t.IsArray) return t.GetElementType();
+            // Multi-dimensional arrays (int[,]) report IsArray=true but don't implement
+            // IEnumerable<T> — accepting the rank-1 element type would compile Enumerable.Count<T>
+            // and explode as 500 at execution. Only single-dimensional arrays are valid OData
+            // collections. Multi-dim falls through to GetInterfaces() which finds nothing
+            // generic and returns null, yielding a clean 400.
+            if (t.IsArray && t.GetArrayRank() == 1) return t.GetElementType();
             if (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(IEnumerable<>))
                 return t.GetGenericArguments()[0];
             foreach (var iface in t.GetInterfaces())
