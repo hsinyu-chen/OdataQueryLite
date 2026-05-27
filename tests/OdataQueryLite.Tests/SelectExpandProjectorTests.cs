@@ -416,7 +416,7 @@ namespace OdataQueryLite.Tests
             // Host registers Order as scalar at startup; projection emits it directly rather
             // than recursing into a nested dict. Mutation is set-once-at-startup pattern; we
             // remove on Dispose to keep test isolation.
-            SelectExpandProjector.ScalarClassTypes.Add(typeof(Customer));
+            SelectExpandProjector.ScalarClassTypes.TryAdd(typeof(Customer), 0);
             try
             {
                 var node = new ExpandRequestNode { SelectedFields = ["Id", "Customer"] };
@@ -428,8 +428,43 @@ namespace OdataQueryLite.Tests
             }
             finally
             {
-                SelectExpandProjector.ScalarClassTypes.Remove(typeof(Customer));
+                SelectExpandProjector.ScalarClassTypes.TryRemove(typeof(Customer), out _);
             }
+        }
+
+        public sealed class RowWithImmutableArrayNav
+        {
+            public int Id { get; set; }
+            public System.Collections.Immutable.ImmutableArray<Order> Orders { get; set; }
+        }
+
+        [Fact]
+        public void Collection_expand_works_on_value_type_collection()
+        {
+            // ImmutableArray<T> is a struct that implements IEnumerable<T>. Without the
+            // Expression.Convert to IEnumerable<elementType>, the Enumerable.Select call
+            // fails to bind at runtime.
+            var src = new[]
+            {
+                new RowWithImmutableArrayNav
+                {
+                    Id = 1,
+                    Orders = [new Order { Id = 10, Qty = 5 }],
+                },
+            }.AsQueryable();
+
+            var node = new ExpandRequestNode { SelectedFields = ["Id"] };
+            node.ExpandedProperties["Orders"] = new ExpandRequestNode
+            {
+                SelectedFields = ["Qty"],
+            };
+
+            var projected = SelectExpandProjector.Project(src, node)
+                .Cast<Dictionary<string, object?>>().ToList();
+
+            var orders = Assert.IsType<List<Dictionary<string, object?>>>(projected[0]["Orders"]);
+            Assert.Single(orders);
+            Assert.Equal(5, orders[0]["Qty"]);
         }
 
         [Fact]

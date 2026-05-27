@@ -190,11 +190,15 @@ namespace OdataQueryLite.ExpressionBuilding
                 var itemLambda = Expression.Lambda(itemDict, itemParam);
 
                 // Enumerable.Select<TSource, TResult>(IEnumerable<TSource>, Func<TSource, TResult>)
+                // Expression trees don't implicitly box value-type collections (ImmutableArray<T>,
+                // custom struct collections) to IEnumerable<T>; insert an explicit Convert so the
+                // generic call shape resolves at execution.
+                var enumerableType = typeof(IEnumerable<>).MakeGenericType(elementType);
                 var selectCall = Expression.Call(
                     typeof(Enumerable),
                     nameof(Enumerable.Select),
                     [elementType, DictType],
-                    memberAccess,
+                    Expression.Convert(memberAccess, enumerableType),
                     itemLambda);
 
                 // Enumerable.ToList<Dictionary<,>>(IEnumerable<Dictionary<,>>)
@@ -219,21 +223,23 @@ namespace OdataQueryLite.ExpressionBuilding
         /// should serialize as scalar values rather than being recursed into as sub-entities.
         /// Defaults cover the BCL's well-known "wrapper" types — <see cref="System.Uri"/>,
         /// <see cref="System.Text.Json.Nodes.JsonNode"/>, <see cref="System.Text.Json.JsonDocument"/>.
-        /// Host applications can <c>Add</c> their own value-object types at composition time;
-        /// the set is read on every projection build, so additions made before the first
-        /// request are picked up. Mutations after projection lambdas have been built (and
-        /// cached) are not retroactive.
+        /// Host applications register their own value-object types via
+        /// <c>ScalarClassTypes.TryAdd(typeof(MyValueObject), 0)</c>; the set is consulted on
+        /// every projection build, so additions made before the first request are picked up.
+        /// Mutations after a projection lambda has been built (and cached) are not retroactive
+        /// for that lambda.
         /// </summary>
         /// <remarks>
-        /// Not thread-safe — treat as set-once configuration mutated during host startup,
-        /// not as a per-request switch.
+        /// Backed by <see cref="ConcurrentDictionary{TKey, TValue}"/> so reads and writes are
+        /// thread-safe even under concurrent host startup or test-suite mutation. The
+        /// <c>byte</c> value slot is unused — only keys carry meaning.
         /// </remarks>
-        public static readonly HashSet<Type> ScalarClassTypes =
+        public static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, byte> ScalarClassTypes = new(
         [
-            typeof(System.Uri),
-            typeof(System.Text.Json.Nodes.JsonNode),
-            typeof(System.Text.Json.JsonDocument),
-        ];
+            new KeyValuePair<Type, byte>(typeof(System.Uri), 0),
+            new KeyValuePair<Type, byte>(typeof(System.Text.Json.Nodes.JsonNode), 0),
+            new KeyValuePair<Type, byte>(typeof(System.Text.Json.JsonDocument), 0),
+        ]);
 
         // Element type of an IEnumerable<T> arrives without the Interfaces DAM annotation;
         // the recursive call only inspects metadata (IsClass / IsInterface / GetInterfaces)
@@ -264,7 +270,9 @@ namespace OdataQueryLite.ExpressionBuilding
 
         private static bool IsScalarClassType(Type t)
         {
-            foreach (var scalarType in ScalarClassTypes)
+            // ConcurrentDictionary.Keys snapshot is safe to enumerate concurrently with
+            // host-registered mutations.
+            foreach (var scalarType in ScalarClassTypes.Keys)
             {
                 if (scalarType.IsAssignableFrom(t)) return true;
             }
