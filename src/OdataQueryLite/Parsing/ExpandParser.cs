@@ -34,10 +34,49 @@ namespace OdataQueryLite.Parsing
         {
             var s = new ParserState(OdataLexer.Tokenize(input).Tokens);
             var root = new ExpandRequestNode { SelectedFields = [] };
-            s.ReadMemberPathList(root.SelectedFields);
+            ReadSelectPath(s, root);
+            while (s.Peek().Kind == TokenKind.Comma)
+            {
+                s.Consume();
+                ReadSelectPath(s, root);
+            }
             if (s.Peek().Kind != TokenKind.EOF)
                 throw new FilterSyntaxException($"unexpected token '{s.Peek().Text}' in $select", s.Peek().Position);
             return root;
+        }
+
+        // OData v4 §5.1.4: $select supports nested paths (`Customer/Name`) that imply an
+        // expansion of every intermediate segment. Fold the slashed path into the
+        // ExpandRequestNode tree so the projector treats it like `$expand=Customer($select=Name)`.
+        private static void ReadSelectPath(ParserState s, ExpandRequestNode root)
+        {
+            var segments = s.ReadMemberPath();
+            if (segments.Count == 1)
+            {
+                root.SelectedFields!.Add(segments[0]);
+                return;
+            }
+            // `$count` is a terminal segment with special collection-cardinality semantics
+            // the projector doesn't apply yet. Keep the joined-path form so the existing
+            // wire shape ($select=Items/$count emerges in SelectedFields verbatim) is
+            // preserved until that projection feature lands.
+            if (segments[^1] == "$count")
+            {
+                root.SelectedFields!.Add(string.Join('/', segments));
+                return;
+            }
+            var node = root;
+            for (int i = 0; i < segments.Count - 1; i++)
+            {
+                if (!node.ExpandedProperties.TryGetValue(segments[i], out var child))
+                {
+                    child = new ExpandRequestNode();
+                    node.ExpandedProperties[segments[i]] = child;
+                }
+                node = child;
+            }
+            node.SelectedFields ??= [];
+            node.SelectedFields.Add(segments[^1]);
         }
 
         private static void ParseList(ParserState s, ExpandRequestNode parent)

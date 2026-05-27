@@ -73,7 +73,7 @@ namespace OdataQueryLite.ExpressionBuilding
         /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
         [RequiresUnreferencedCode("Resolves T's public properties by name; T's properties must be preserved by the trimmer.")]
         [RequiresDynamicCode("Builds Expression<Func<T, Dictionary<string, object?>>> and calls Queryable.Select<T, Dictionary<string, object?>>.")]
-        public static IQueryable Project<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] T>(
+        public static IQueryable Project<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.Interfaces)] T>(
             IQueryable<T> source,
             ExpandRequestNode node)
         {
@@ -95,7 +95,7 @@ namespace OdataQueryLite.ExpressionBuilding
         [RequiresUnreferencedCode("Resolves t's public properties by name.")]
         [RequiresDynamicCode("Builds nested generic Expression.Call to Enumerable.Select / Enumerable.ToList for collection navigations.")]
         private static NewExpression  BuildDictionaryExpression(
-            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] Type t,
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.Interfaces)] Type t,
             Expression source,
             ExpandRequestNode node)
         {
@@ -109,7 +109,7 @@ namespace OdataQueryLite.ExpressionBuilding
         [RequiresUnreferencedCode("Resolves t's public properties by name.")]
         [RequiresDynamicCode("Constructs Expression.Call to Enumerable.Select<TSource, Dictionary<,>> for collection navigations.")]
         private static List<Expression> BuildKeyValuePairs(
-            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] Type t,
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.Interfaces)] Type t,
             Expression source,
             ExpandRequestNode node)
         {
@@ -158,12 +158,20 @@ namespace OdataQueryLite.ExpressionBuilding
                 }
                 else if (isScalarSelected)
                 {
-                    // If the client explicitly named this property in $select, project it
-                    // as-is regardless of nav classification. Lets a host's value object types
-                    // (System.Version, IPAddress, DDD value objects) come through without
-                    // needing entries in ScalarClassTypes. The default-projection branch
-                    // (SelectedFields == null) still hides nav-likes by classification.
-                    value = Expression.Property(source, prop);
+                    if (IsNavigationLike(prop.PropertyType))
+                    {
+                        // Auto-expand: `$select=Customer` (no companion $expand) projects the
+                        // nav as a nested dictionary using the same projection pipeline. Avoids
+                        // exposing the raw entity to the JSON serializer, which doesn't honor
+                        // [OdataIgnore] — only the dictionary build does. Host value-object
+                        // types should register in ScalarClassTypes so IsNavigationLike returns
+                        // false; everything else gets the safer nested projection by default.
+                        value = BuildExpandedValue(prop, source, new ExpandRequestNode());
+                    }
+                    else
+                    {
+                        value = Expression.Property(source, prop);
+                    }
                 }
 
                 if (value is null) continue;
@@ -195,13 +203,19 @@ namespace OdataQueryLite.ExpressionBuilding
                 // Enumerable.Select<TSource, TResult>(IEnumerable<TSource>, Func<TSource, TResult>)
                 // Expression trees don't implicitly box value-type collections (ImmutableArray<T>,
                 // custom struct collections) to IEnumerable<T>; insert an explicit Convert so the
-                // generic call shape resolves at execution.
+                // generic call shape resolves at execution. Reference-type collections
+                // (List<T>, ICollection<T>) already satisfy the binding contract, and EF Core's
+                // translator handles the un-converted memberAccess more cleanly than a wrapped
+                // ConvertExpression.
                 var enumerableType = typeof(IEnumerable<>).MakeGenericType(elementType);
+                Expression selectSource = memberAccess.Type.IsValueType
+                    ? Expression.Convert(memberAccess, enumerableType)
+                    : memberAccess;
                 var selectCall = Expression.Call(
                     typeof(Enumerable),
                     nameof(Enumerable.Select),
                     [elementType, DictType],
-                    Expression.Convert(memberAccess, enumerableType),
+                    selectSource,
                     itemLambda);
 
                 // Enumerable.ToList<Dictionary<,>>(IEnumerable<Dictionary<,>>)

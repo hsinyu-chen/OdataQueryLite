@@ -299,18 +299,34 @@ namespace OdataQueryLite.Tests
         }
 
         [Fact]
-        public void Explicit_select_on_navigation_type_projects_as_scalar_instance()
+        public void Nested_select_path_folds_into_expand_tree()
         {
-            // $select=Id,Customer (no $expand) — client explicitly named Customer, so the
-            // projection must include the Customer instance rather than silently omitting
-            // it as "navigation". The serializer takes it from there.
+            // $select=Id,Customer/Name routes through the new slashed-path tree fold —
+            // equivalent to $expand=Customer($select=Name).
+            var opts = new OdataQueryOptions<Row>(new OdataQueryParts { Select = "Id,Customer/Name" });
+            var result = opts.Apply(Rows());
+            var dicts = result.Data.Cast<Dictionary<string, object?>>().ToList();
+
+            var customer = Assert.IsType<Dictionary<string, object?>>(dicts[0]["Customer"]);
+            Assert.Equal("Alice", customer["Name"]);
+            Assert.DoesNotContain("Phone", customer.Keys);
+        }
+
+        [Fact]
+        public void Explicit_select_on_navigation_type_auto_expands_to_nested_dictionary()
+        {
+            // $select=Id,Customer (no $expand) — client explicitly named Customer. To keep
+            // [OdataIgnore] honored on nested fields (the raw entity would bypass it during
+            // JSON serialization), the projector auto-expands the nav with an empty inner
+            // node so the recursive dict build picks up all visible scalars.
             var node = new ExpandRequestNode { SelectedFields = ["Id", "Customer"] };
             var projected = SelectExpandProjector.Project(Rows(), node)
                 .Cast<Dictionary<string, object?>>().ToList();
 
             Assert.Equal(2, projected.Count);
-            var customer = Assert.IsType<Customer>(projected[0]["Customer"]);
-            Assert.Equal("Alice", customer.Name);
+            var customer = Assert.IsType<Dictionary<string, object?>>(projected[0]["Customer"]);
+            Assert.Equal("Alice", customer["Name"]);
+            Assert.Equal("111", customer["Phone"]);
         }
 
         public sealed class IndexerRow
