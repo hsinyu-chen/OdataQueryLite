@@ -127,7 +127,7 @@ namespace OdataQueryLite.ExpressionBuilding
                 MemberPathResolver.ResolveProperty(t, expandedName);
 
             var kvps = new List<Expression>();
-            foreach (var prop in t.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            foreach (var prop in MemberPathResolver.GetPropertiesIncludingInterfaces(t))
             {
                 if (!prop.CanRead) continue;
                 // Skip indexers (`public object this[string key]`) — Expression.Property
@@ -202,11 +202,22 @@ namespace OdataQueryLite.ExpressionBuilding
                     itemLambda);
 
                 // Enumerable.ToList<Dictionary<,>>(IEnumerable<Dictionary<,>>)
-                return Expression.Call(
+                var toListCall = Expression.Call(
                     typeof(Enumerable),
                     nameof(Enumerable.ToList),
                     [DictType],
                     selectCall);
+
+                // Null guard for collection navs (parallel to the ref-nav guard below):
+                // in-memory `Enumerable.Select(null, …)` would ArgumentNullException; EF Core
+                // typically materializes empty collections, but the projector should be
+                // provider-agnostic. Skip the guard for value-type collections — they can't
+                // be null, and the equality check against `null` wouldn't compile.
+                if (memberAccess.Type.IsValueType)
+                    return toListCall;
+                var listType = typeof(List<>).MakeGenericType(DictType);
+                var collectionIsNull = Expression.Equal(memberAccess, Expression.Constant(null, memberAccess.Type));
+                return Expression.Condition(collectionIsNull, Expression.Constant(null, listType), toListCall);
             }
 
             // Reference navigation: x.Customer == null ? null : new Dictionary<>(...).

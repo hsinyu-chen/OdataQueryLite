@@ -432,6 +432,48 @@ namespace OdataQueryLite.Tests
             }
         }
 
+        public interface IBaseId
+        {
+            int Id { get; }
+        }
+        public interface INamedRow : IBaseId
+        {
+            string Name { get; }
+        }
+
+        [Fact]
+        public void Filter_on_inherited_interface_property_resolves()
+        {
+            // Type.GetProperty on INamedRow does NOT return Id (inherited from IBaseId);
+            // engine must walk base interfaces. Without the fix, $filter=Id eq 1 against
+            // IQueryable<INamedRow> throws "not found".
+            var ex = Record.Exception(() =>
+                new OdataQueryOptions<INamedRow>(new OdataQueryParts { Filter = "Id eq 1" }));
+            Assert.Null(ex);
+        }
+
+        [Fact]
+        public void Collection_expand_with_null_navigation_emits_null_list()
+        {
+            var src = new[]
+            {
+                // Orders deliberately null to exercise the collection null guard.
+                new Row { Id = 1, Name = "Apple", Customer = new(), Orders = null! },
+            }.AsQueryable();
+
+            var node = new ExpandRequestNode { SelectedFields = ["Id"] };
+            node.ExpandedProperties["Orders"] = new ExpandRequestNode
+            {
+                SelectedFields = ["Qty"],
+            };
+
+            var projected = SelectExpandProjector.Project(src, node)
+                .Cast<Dictionary<string, object?>>().ToList();
+
+            // Conditional null guard surfaces null rather than ArgumentNullException'ing.
+            Assert.Null(projected[0]["Orders"]);
+        }
+
         public sealed class RowWithImmutableArrayNav
         {
             public int Id { get; set; }

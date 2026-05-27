@@ -72,10 +72,10 @@ namespace OdataQueryLite.ExpressionBuilding
         }
 
         public static PropertyInfo ResolveProperty(
-            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] Type t,
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.Interfaces)] Type t,
             string name)
         {
-            var pi = t.GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
+            var pi = GetPropertyIncludingInterfaces(t, name);
             // Treat ignored properties and indexers as if they didn't exist:
             //  - Ignored ([JsonIgnore]/[OdataIgnore]) — same error so callers can't discriminate
             //    "wrong name" from "hidden" and mount boolean probes like
@@ -86,11 +86,58 @@ namespace OdataQueryLite.ExpressionBuilding
             // Available list filtered identically so attackers can't enumerate hidden props.
             if (pi != null && pi.GetIndexParameters().Length == 0 && !IsIgnored(pi)) return pi;
             var available = string.Join(", ",
-                t.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                GetPropertiesIncludingInterfaces(t)
                     .Where(p => p.GetIndexParameters().Length == 0 && !IsIgnored(p))
-                    .Select(p => p.Name));
+                    .Select(p => p.Name)
+                    .Distinct());
             throw new OdataQueryException(
                 $"Property '{name}' not found on type '{t.Name}'. Available: {available}.");
+        }
+
+        /// <summary>
+        /// Like <see cref="Type.GetProperty(string, BindingFlags)"/> but also walks base
+        /// interfaces when <paramref name="type"/> is itself an interface. Plain
+        /// <c>GetProperty</c> returns <see langword="null"/> for an inherited interface
+        /// property because the BCL does not flatten interface hierarchies for reflection.
+        /// </summary>
+        [UnconditionalSuppressMessage("Trimming", "IL2075:UnrecognizedReflectionPattern",
+            Justification = "Base interfaces of an OData root type are reachable through the same DAM annotation that preserves the root type's public properties — host registration of T propagates to T's interface metadata.")]
+        public static PropertyInfo? GetPropertyIncludingInterfaces(
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.Interfaces)] Type type,
+            string name)
+        {
+            var pi = type.GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
+            if (pi != null) return pi;
+            if (type.IsInterface)
+            {
+                foreach (var iface in type.GetInterfaces())
+                {
+                    pi = iface.GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
+                    if (pi != null) return pi;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Like <see cref="Type.GetProperties(BindingFlags)"/> but flattens inherited interface
+        /// properties when <paramref name="type"/> is itself an interface. May yield duplicates
+        /// (e.g. when two parent interfaces redeclare a property) — callers that need a unique
+        /// name list should compose with <c>.Distinct()</c>.
+        /// </summary>
+        [UnconditionalSuppressMessage("Trimming", "IL2070:UnrecognizedReflectionPattern",
+            Justification = "Same as GetPropertyIncludingInterfaces — base interfaces' public properties are kept by the root type's DAM annotation.")]
+        [UnconditionalSuppressMessage("Trimming", "IL2075:UnrecognizedReflectionPattern",
+            Justification = "iface enumerated from type.GetInterfaces() inherits the root type's PublicProperties guarantee transitively.")]
+        public static IEnumerable<PropertyInfo> GetPropertiesIncludingInterfaces(
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.Interfaces)] Type type)
+        {
+            var direct = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+            if (!type.IsInterface) return direct;
+            var collected = new List<PropertyInfo>(direct);
+            foreach (var iface in type.GetInterfaces())
+                collected.AddRange(iface.GetProperties(BindingFlags.Public | BindingFlags.Instance));
+            return collected;
         }
 
         /// <summary>
