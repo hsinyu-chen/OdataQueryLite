@@ -299,6 +299,18 @@ namespace OdataQueryLite.Tests
         }
 
         [Fact]
+        public void Dollar_count_terminal_path_does_not_crash_validation()
+        {
+            // Round-9 keeps `Items/$count` joined in SelectedFields (count projection not
+            // yet implemented). The projector must skip ResolveProperty validation for these
+            // so the request doesn't 500 today and so the feature can land later without a
+            // wire-shape change.
+            var opts = new OdataQueryOptions<Row>(new OdataQueryParts { Select = "Id,Orders/$count" });
+            var ex = Record.Exception(() => opts.Apply(Rows()));
+            Assert.Null(ex);
+        }
+
+        [Fact]
         public void Nested_select_path_folds_into_expand_tree()
         {
             // $select=Id,Customer/Name routes through the new slashed-path tree fold —

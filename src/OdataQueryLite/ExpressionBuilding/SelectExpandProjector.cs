@@ -121,7 +121,16 @@ namespace OdataQueryLite.ExpressionBuilding
             if (node.SelectedFields is not null)
             {
                 foreach (var field in node.SelectedFields)
+                {
+                    // Slashed paths normally get folded into ExpandedProperties at parse
+                    // time. The exception is a `$count` terminal (preserved verbatim until
+                    // the count-projection feature lands) and `$`-prefixed system fields
+                    // generally. The kvp loop already ignores them (no matching public
+                    // property name), so skipping validation keeps the future feature
+                    // path open without crashing today.
+                    if (field.Contains('/') || field.StartsWith('$')) continue;
                     MemberPathResolver.ResolveProperty(t, field);
+                }
             }
             foreach (var expandedName in node.ExpandedProperties.Keys)
                 MemberPathResolver.ResolveProperty(t, expandedName);
