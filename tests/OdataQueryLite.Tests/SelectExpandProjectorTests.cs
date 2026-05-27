@@ -452,6 +452,21 @@ namespace OdataQueryLite.Tests
             Assert.Null(ex);
         }
 
+        public interface IHasIdA { int Id { get; } }
+        public interface IHasIdB { int Id { get; } }
+        public interface IBothIds : IHasIdA, IHasIdB { }
+
+        [Fact]
+        public void Duplicate_interface_property_names_dont_throw_on_dictionary_ctor()
+        {
+            // Two parent interfaces both expose Id; GetPropertiesIncludingInterfaces would
+            // surface it twice without DistinctBy, and the Dictionary ctor would throw
+            // ArgumentException at projection-build time.
+            var ex = Record.Exception(() =>
+                new OdataQueryOptions<IBothIds>(new OdataQueryParts { Select = "Id" }));
+            Assert.Null(ex);
+        }
+
         [Fact]
         public void Collection_expand_with_null_navigation_emits_null_list()
         {

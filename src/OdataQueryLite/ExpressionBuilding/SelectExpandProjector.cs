@@ -127,7 +127,10 @@ namespace OdataQueryLite.ExpressionBuilding
                 MemberPathResolver.ResolveProperty(t, expandedName);
 
             var kvps = new List<Expression>();
-            foreach (var prop in MemberPathResolver.GetPropertiesIncludingInterfaces(t))
+            // DistinctBy: interface flattening (`INamed : IBase` where both expose Id) can
+            // surface the same property name twice; the Dictionary ctor would then throw
+            // ArgumentException on duplicate key at execution.
+            foreach (var prop in MemberPathResolver.GetPropertiesIncludingInterfaces(t).DistinctBy(p => p.Name))
             {
                 if (!prop.CanRead) continue;
                 // Skip indexers (`public object this[string key]`) — Expression.Property
@@ -281,11 +284,12 @@ namespace OdataQueryLite.ExpressionBuilding
 
         private static bool IsScalarClassType(Type t)
         {
-            // ConcurrentDictionary.Keys snapshot is safe to enumerate concurrently with
-            // host-registered mutations.
-            foreach (var scalarType in ScalarClassTypes.Keys)
+            // Direct foreach over ConcurrentDictionary is lock-free + allocation-free
+            // (snapshot is implicit in the enumerator). `.Keys` would allocate a separate
+            // collection — wasteful here since IsScalarClassType is on the hot path.
+            foreach (var pair in ScalarClassTypes)
             {
-                if (scalarType.IsAssignableFrom(t)) return true;
+                if (pair.Key.IsAssignableFrom(t)) return true;
             }
             return false;
         }
