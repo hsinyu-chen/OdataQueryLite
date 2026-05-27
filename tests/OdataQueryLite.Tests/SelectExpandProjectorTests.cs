@@ -125,30 +125,32 @@ namespace OdataQueryLite.Tests
         }
 
         [Fact]
-        public void Stj_JsonIgnore_filters_property_even_when_explicitly_selected()
+        public void Stj_JsonIgnore_property_in_select_throws_not_found()
         {
+            // $select on a [JsonIgnore]-decorated property surfaces the same "not found"
+            // diagnostic as a typo, denying the client a way to discriminate hidden vs absent.
             var node = new ExpandRequestNode { SelectedFields = ["Id", "PasswordStj"] };
-            var projected = SelectExpandProjector.Project(Rows(), node).Cast<Dictionary<string, object?>>().ToList();
-
-            Assert.DoesNotContain("PasswordStj", projected[0].Keys);
+            var ex = Assert.Throws<OdataQueryException>(() =>
+                SelectExpandProjector.Project(Rows(), node).Cast<Dictionary<string, object?>>().ToList());
+            Assert.Contains("not found", ex.Message);
         }
 
         [Fact]
-        public void Newtonsoft_JsonIgnore_filters_property_even_when_explicitly_selected()
+        public void Newtonsoft_JsonIgnore_property_in_select_throws_not_found()
         {
             var node = new ExpandRequestNode { SelectedFields = ["Id", "PasswordNewtonsoft"] };
-            var projected = SelectExpandProjector.Project(Rows(), node).Cast<Dictionary<string, object?>>().ToList();
-
-            Assert.DoesNotContain("PasswordNewtonsoft", projected[0].Keys);
+            var ex = Assert.Throws<OdataQueryException>(() =>
+                SelectExpandProjector.Project(Rows(), node).Cast<Dictionary<string, object?>>().ToList());
+            Assert.Contains("not found", ex.Message);
         }
 
         [Fact]
-        public void OdataIgnore_filters_property_even_when_explicitly_selected()
+        public void OdataIgnore_property_in_select_throws_not_found()
         {
             var node = new ExpandRequestNode { SelectedFields = ["Id", "PasswordOwn"] };
-            var projected = SelectExpandProjector.Project(Rows(), node).Cast<Dictionary<string, object?>>().ToList();
-
-            Assert.DoesNotContain("PasswordOwn", projected[0].Keys);
+            var ex = Assert.Throws<OdataQueryException>(() =>
+                SelectExpandProjector.Project(Rows(), node).Cast<Dictionary<string, object?>>().ToList());
+            Assert.Contains("not found", ex.Message);
         }
 
         [Fact]
@@ -265,6 +267,61 @@ namespace OdataQueryLite.Tests
             // Uri serializes as object; emerges in the dict.
             Assert.Equal("https://example.com/", projected[0]["Website"]?.ToString());
             Assert.Null(projected[0]["Metadata"]);
+        }
+
+        public sealed class RowWithStringCollection
+        {
+            public int Id { get; set; }
+            public List<string> Tags { get; set; } = [];
+        }
+
+        [Fact]
+        public void Collection_of_scalars_treated_as_scalar_not_navigation()
+        {
+            // List<string> / int[] etc are inline-serialized values, not sub-entities. They
+            // should appear in the default projection rather than being omitted as "nav".
+            var src = new[]
+            {
+                new RowWithStringCollection { Id = 1, Tags = ["a", "b"] },
+            }.AsQueryable();
+
+            var node = new ExpandRequestNode { SelectedFields = ["Id", "Tags"] };
+            var projected = SelectExpandProjector.Project(src, node)
+                .Cast<Dictionary<string, object?>>().ToList();
+
+            var tags = Assert.IsType<List<string>>(projected[0]["Tags"]);
+            Assert.Equal(["a", "b"], tags);
+        }
+
+        [Fact]
+        public void Select_on_unknown_property_throws()
+        {
+            // Aligns with $filter / $orderby diagnostics; silent omission would mask typos.
+            var opts = new OdataQueryOptions<Row>(new OdataQueryParts { Select = "Id,Nmae" });
+            var ex = Assert.Throws<OdataQueryException>(() => opts.Apply(Rows()));
+            Assert.Contains("Nmae", ex.Message);
+            Assert.Contains("not found", ex.Message);
+        }
+
+        [Fact]
+        public void Expand_on_unknown_property_throws()
+        {
+            var opts = new OdataQueryOptions<Row>(new OdataQueryParts { Expand = "Nonexistent" });
+            var ex = Assert.Throws<OdataQueryException>(() => opts.Apply(Rows()));
+            Assert.Contains("Nonexistent", ex.Message);
+            Assert.Contains("not found", ex.Message);
+        }
+
+        [Fact]
+        public void Select_on_ignored_property_still_throws_not_found()
+        {
+            // Side-channel guard: hidden property must produce the same diagnostic shape as a
+            // typo so the client can't enumerate which fields are JsonIgnored vs missing.
+            var opts = new OdataQueryOptions<Row>(new OdataQueryParts { Select = "Id,PasswordStj" });
+            var ex = Assert.Throws<OdataQueryException>(() => opts.Apply(Rows()));
+            Assert.Contains("not found", ex.Message);
+            var available = ex.Message[(ex.Message.IndexOf("Available: ") + "Available: ".Length)..];
+            Assert.DoesNotContain("PasswordStj", available);
         }
 
         public sealed class RowWithObjectAndJsonSubclass

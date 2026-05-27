@@ -113,6 +113,19 @@ namespace OdataQueryLite.ExpressionBuilding
             Expression source,
             ExpandRequestNode node)
         {
+            // Validate requested names before iterating T's public properties. Aligns with
+            // $filter / $orderby diagnostics (which already throw via ResolveProperty) so a
+            // typo never silently produces an empty dictionary. ResolveProperty also folds
+            // hidden ([JsonIgnore] / [OdataIgnore]) properties into the same "not found"
+            // diagnostic, preserving the visibility side-channel guard.
+            if (node.SelectedFields is not null)
+            {
+                foreach (var field in node.SelectedFields)
+                    MemberPathResolver.ResolveProperty(t, field);
+            }
+            foreach (var expandedName in node.ExpandedProperties.Keys)
+                MemberPathResolver.ResolveProperty(t, expandedName);
+
             var kvps = new List<Expression>();
             foreach (var prop in t.GetProperties(BindingFlags.Public | BindingFlags.Instance))
             {
@@ -217,6 +230,12 @@ namespace OdataQueryLite.ExpressionBuilding
             typeof(System.Text.Json.JsonDocument),
         ];
 
+        // Element type of an IEnumerable<T> arrives without the Interfaces DAM annotation;
+        // the recursive call only inspects metadata (IsClass / IsInterface / GetInterfaces)
+        // that GetInterfaces preserves regardless, so the IL2072 propagation warning is
+        // spurious here.
+        [UnconditionalSuppressMessage("Trimming", "IL2072:UnrecognizedReflectionPattern",
+            Justification = "Collection element type's interface metadata is preserved by the same DAM annotation that kept T's interfaces reachable.")]
         private static bool IsNavigationLike(
             [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.Interfaces)] Type t)
         {
@@ -229,7 +248,11 @@ namespace OdataQueryLite.ExpressionBuilding
             // on them in absence of $expand has no defined semantics here, so we omit by default.
             if (t == typeof(string) || t == typeof(byte[]) || t == typeof(object)) return false;
             if (IsScalarClassType(t)) return false;
-            if (MemberPathResolver.GetEnumerableElementType(t) is not null) return true;
+            // Collection of scalars (List<string>, int[], byte[][], List<Uri>) is itself a
+            // scalar — it serializes inline, not as a sub-entity to recurse into. Only
+            // collections of navigation-like elements are themselves navigation-like.
+            var elementType = MemberPathResolver.GetEnumerableElementType(t);
+            if (elementType is not null) return IsNavigationLike(elementType);
             if (t.IsClass || t.IsInterface) return true;
             return false;
         }
