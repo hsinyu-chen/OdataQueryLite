@@ -12,6 +12,10 @@ on:
 
 permissions:
   contents: read
+  # OIDC token used by NuGet/login to exchange a short-lived API key per run.
+  # Replaces the long-lived NUGET_API_KEY secret; revoke that secret after the
+  # first successful Trusted Publishing run.
+  id-token: write
 
 env:
   DOTNET_NOLOGO: true
@@ -59,11 +63,15 @@ jobs:
       - name: List packed artifacts
         run: ls -la ./nupkgs
 
+      - name: NuGet login (Trusted Publishing OIDC)
+        uses: NuGet/login@v1
+        id: nuget-login
+        with:
+          user: hsinyu-chen
+
       - name: Push to NuGet
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
           dotnet nuget push "./nupkgs/*.nupkg" \
-            --api-key "$NUGET_API_KEY" \
+            --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
