@@ -72,14 +72,108 @@ namespace OdataQueryLite.ExpressionBuilding
         }
 
         public static PropertyInfo ResolveProperty(
-            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] Type t,
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.Interfaces)] Type t,
             string name)
         {
-            var pi = t.GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
-            if (pi != null) return pi;
-            var available = string.Join(", ", t.GetProperties(BindingFlags.Public | BindingFlags.Instance).Select(p => p.Name));
+            var pi = GetPropertyIncludingInterfaces(t, name);
+            // Treat ignored properties and indexers as if they didn't exist:
+            //  - Ignored ([JsonIgnore]/[OdataIgnore]) — same error so callers can't discriminate
+            //    "wrong name" from "hidden" and mount boolean probes like
+            //    `$filter=startswith(Password, 's')`.
+            //  - Indexers (`public object this[string key]`, default-named "Item" in metadata) —
+            //    Expression.Property without index args throws ArgumentException at execution,
+            //    surfacing as a 500. Filter them at the resolve boundary for a clean 400.
+            // Available list filtered identically so attackers can't enumerate hidden props.
+            // GetGetMethod() != null (vs PropertyInfo.CanRead, which counts non-public
+            // getters too) rules out `public set; private get;` properties — Expression.Property
+            // would otherwise hit them with no public accessor and 500 at execution.
+            if (pi != null && pi.GetIndexParameters().Length == 0 && pi.GetGetMethod() != null && !IsIgnored(pi)) return pi;
+            var available = string.Join(", ",
+                GetPropertiesIncludingInterfaces(t)
+                    .Where(p => p.GetIndexParameters().Length == 0 && p.GetGetMethod() != null && !IsIgnored(p))
+                    .Select(p => p.Name)
+                    .Distinct());
             throw new OdataQueryException(
                 $"Property '{name}' not found on type '{t.Name}'. Available: {available}.");
         }
+
+        /// <summary>
+        /// Like <see cref="Type.GetProperty(string, BindingFlags)"/> but also walks base
+        /// interfaces when <paramref name="type"/> is itself an interface. Plain
+        /// <c>GetProperty</c> returns <see langword="null"/> for an inherited interface
+        /// property because the BCL does not flatten interface hierarchies for reflection.
+        /// </summary>
+        [UnconditionalSuppressMessage("Trimming", "IL2075:UnrecognizedReflectionPattern",
+            Justification = "Base interfaces of an OData root type are reachable through the same DAM annotation that preserves the root type's public properties — host registration of T propagates to T's interface metadata.")]
+        public static PropertyInfo? GetPropertyIncludingInterfaces(
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.Interfaces)] Type type,
+            string name)
+        {
+            var pi = type.GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
+            if (pi != null) return pi;
+            if (type.IsInterface)
+            {
+                foreach (var iface in type.GetInterfaces())
+                {
+                    pi = iface.GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
+                    if (pi != null) return pi;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Like <see cref="Type.GetProperties(BindingFlags)"/> but flattens inherited interface
+        /// properties when <paramref name="type"/> is itself an interface. May yield duplicates
+        /// (e.g. when two parent interfaces redeclare a property) — callers that need a unique
+        /// name list should compose with <c>.Distinct()</c>.
+        /// </summary>
+        [UnconditionalSuppressMessage("Trimming", "IL2070:UnrecognizedReflectionPattern",
+            Justification = "Same as GetPropertyIncludingInterfaces — base interfaces' public properties are kept by the root type's DAM annotation.")]
+        [UnconditionalSuppressMessage("Trimming", "IL2075:UnrecognizedReflectionPattern",
+            Justification = "iface enumerated from type.GetInterfaces() inherits the root type's PublicProperties guarantee transitively.")]
+        public static IEnumerable<PropertyInfo> GetPropertiesIncludingInterfaces(
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.Interfaces)] Type type)
+        {
+            var direct = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+            if (!type.IsInterface) return direct;
+            var collected = new List<PropertyInfo>(direct);
+            foreach (var iface in type.GetInterfaces())
+                collected.AddRange(iface.GetProperties(BindingFlags.Public | BindingFlags.Instance));
+            return collected;
+        }
+
+        /// <summary>
+        /// Whether <paramref name="prop"/> is hidden from OData via
+        /// <see cref="OdataIgnoreAttribute"/>, <c>Newtonsoft.Json.JsonIgnoreAttribute</c>, or
+        /// <c>System.Text.Json.Serialization.JsonIgnoreAttribute</c>. The JSON attributes are
+        /// matched by full name so the engine carries no NuGet dependency on either package.
+        /// Hidden properties are unreachable from any <c>$</c>-option — <c>$select</c>,
+        /// <c>$expand</c>, <c>$filter</c>, and <c>$orderby</c> all reject them, surfacing the
+        /// same "not found" diagnostic as a misspelled property to deny attackers a way to
+        /// discriminate hidden-but-present from absent.
+        /// </summary>
+        public static bool IsIgnored(PropertyInfo prop) =>
+            IgnoredCache.GetOrAdd(prop, static p =>
+            {
+                foreach (var attr in p.GetCustomAttributes(inherit: true))
+                {
+                    // Cheap concrete-type check first; FullName allocation only on miss.
+                    if (attr is OdataIgnoreAttribute) return true;
+                    var fullName = attr.GetType().FullName;
+                    if (fullName == NewtonsoftJsonIgnoreFullName) return true;
+                    if (fullName == SystemTextJsonIgnoreFullName) return true;
+                }
+                return false;
+            });
+
+        // PropertyInfo is reflection-stable per (DeclaringType, Name); equality is structural,
+        // so the cache survives even if the BCL returns distinct PropertyInfo instances across
+        // calls. Filter/orderby/projection all hit IsIgnored on every property of T, so the
+        // cache turns N reflection probes per request into N once-per-process.
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<PropertyInfo, bool> IgnoredCache = new();
+
+        private const string NewtonsoftJsonIgnoreFullName = "Newtonsoft.Json.JsonIgnoreAttribute";
+        private const string SystemTextJsonIgnoreFullName = "System.Text.Json.Serialization.JsonIgnoreAttribute";
     }
 }

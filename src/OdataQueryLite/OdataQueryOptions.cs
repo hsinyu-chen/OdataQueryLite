@@ -113,15 +113,39 @@ namespace OdataQueryLite
             if (!string.IsNullOrWhiteSpace(parts.Select))
             {
                 var fromSelect = ExpandParser.ParseSelect(parts.Select);
-                // Spec invariant: per OData v4.01 ABNF, `select` only appears inside
-                // `expandOption` (the parens after an expand item), so ExpandParser.Parse
-                // never assigns root-level SelectedFields. This overwrite is therefore
-                // always against null. Locked by ExpandParserTests.Parse_never_sets_root_SelectedFields
-                // — if that test fires, this merge must switch to UnionWith.
                 if (expand is null) expand = fromSelect;
-                else expand.SelectedFields = fromSelect.SelectedFields;
+                else MergeSelectInto(expand, fromSelect);
             }
             Expand = expand;
+        }
+
+        // Merge a $select-derived tree into the existing $expand tree.
+        //
+        // Root-level $expand never carries SelectedFields (per OData v4.01 ABNF, $select only
+        // appears inside `expandOption`); root-level $select on the other hand can carry both
+        // SelectedFields (`$select=Id,Name`) and ExpandedProperties (from slashed nested paths
+        // `$select=Customer/Name`). When both wire-level options are supplied we union them
+        // so callers that mix $expand=Customer with $select=Customer/Phone get both — the
+        // $expand-side gives the full Customer with no field filter, the $select-side adds a
+        // narrowed projection on the same nav. Per-segment recursion mirrors that intent at
+        // each depth.
+        private static void MergeSelectInto(ExpandRequestNode target, ExpandRequestNode source)
+        {
+            if (source.SelectedFields is not null)
+            {
+                target.SelectedFields ??= [];
+                foreach (var f in source.SelectedFields)
+                    target.SelectedFields.Add(f);
+            }
+            foreach (var (key, sourceChild) in source.ExpandedProperties)
+            {
+                if (!target.ExpandedProperties.TryGetValue(key, out var targetChild))
+                {
+                    target.ExpandedProperties[key] = sourceChild;
+                    continue;
+                }
+                MergeSelectInto(targetChild, sourceChild);
+            }
         }
 
         /// <summary>
@@ -132,8 +156,8 @@ namespace OdataQueryLite
         /// <param name="options">Per-call switches; <see langword="null"/> applies every stage.</param>
         /// <returns>The composed query plus the filtered-but-unpaged snapshot.</returns>
         /// <exception cref="ArgumentNullException"><paramref name="source"/> is <see langword="null"/>.</exception>
-        [RequiresUnreferencedCode("Delegates to ICompiledQuery<T>.Apply / OrderByApplier.Apply which build Expression trees over T.")]
-        [RequiresDynamicCode("Delegates to ICompiledQuery<T>.Apply / OrderByApplier.Apply which compile generic delegates at runtime.")]
+        [RequiresUnreferencedCode("Delegates to ICompiledQuery<T>.Apply / OrderByApplier.Apply / SelectExpandProjector.Project which build Expression trees over T.")]
+        [RequiresDynamicCode("Delegates to ICompiledQuery<T>.Apply / OrderByApplier.Apply / SelectExpandProjector.Project which compile generic delegates at runtime.")]
         public QueryResult<T> Apply(IQueryable<T> source, IApplyOptions? options = null)
         {
             ArgumentNullException.ThrowIfNull(source);
@@ -143,11 +167,12 @@ namespace OdataQueryLite
             if (_filterCompiled is not null)
                 q = _filterCompiled.Apply(q, _filterParsed!.Literals);
 
-            // Snapshot the filtered, pre-orderby, pre-paged queryable so the caller can count
-            // it independently. We don't enumerate — caller chooses sync LongCount() or async
-            // LongCountAsync() per their provider, or skips entirely. Whether to surface a
-            // total to the client is the host's call, typically gated on Count (the wire $count
-            // flag). OrderBy is excluded because Count is order-independent.
+            // Snapshot the filtered, pre-orderby, pre-paged, pre-projection queryable so the
+            // caller can count it independently. We don't enumerate — caller chooses sync
+            // LongCount() or async LongCountAsync() per their provider, or skips entirely.
+            // Whether to surface a total to the client is the host's call, typically gated on
+            // Count (the wire $count flag). OrderBy + projection are excluded because count
+            // is order- and shape-independent.
             var unpaged = q;
 
             if (opt.OrderBy && _orderByClause is not null)
@@ -161,7 +186,11 @@ namespace OdataQueryLite
                 if (Top is int top) q = q.Take(top);
             }
 
-            return new QueryResult<T>(q, unpaged);
+            IQueryable data = q;
+            if (opt.SelectExpand && Expand is not null)
+                data = SelectExpandProjector.Project(q, Expand);
+
+            return new QueryResult<T>(data, unpaged);
         }
     }
 }

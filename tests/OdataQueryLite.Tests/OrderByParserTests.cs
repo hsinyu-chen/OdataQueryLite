@@ -12,7 +12,7 @@ namespace OdataQueryLite.Tests
             var c = OrderByParser.Parse("Name");
             Assert.Single(c.Items);
             Assert.Equal(OrderByDirection.Ascending, c.Items[0].Direction);
-            Assert.Equal(new[] { "Name" }, c.Items[0].Member.Path);
+            Assert.Equal(["Name"], c.Items[0].Member.Path);
         }
 
         [Fact]
@@ -36,7 +36,7 @@ namespace OdataQueryLite.Tests
         public void Nested_property_path_supported()
         {
             var c = OrderByParser.Parse("Customer/Name desc");
-            Assert.Equal(new[] { "Customer", "Name" }, c.Items[0].Member.Path);
+            Assert.Equal(["Customer", "Name"], c.Items[0].Member.Path);
             Assert.Equal(OrderByDirection.Descending, c.Items[0].Direction);
         }
 

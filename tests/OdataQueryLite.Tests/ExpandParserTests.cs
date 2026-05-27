@@ -105,12 +105,19 @@ namespace OdataQueryLite.Tests
         [Fact]
         public void ParseSelect_accepts_nested_member_path()
         {
-            // OData spec: $select=Customer/Name is valid; the slash navigates the Customer
-            // relationship and selects Name from it.
+            // OData v4 §5.1.4: $select=Customer/Name navigates the Customer relationship and
+            // selects Name from it. Parser folds slashed paths into the same tree shape as
+            // $expand=Customer($select=Name) so the projector treats both equivalently.
             var t = ExpandParser.ParseSelect("Name,Customer/Phone,Items/Product/Code");
-            Assert.Contains("Name", t.SelectedFields);
-            Assert.Contains("Customer/Phone", t.SelectedFields);
-            Assert.Contains("Items/Product/Code", t.SelectedFields);
+            Assert.Equal(["Name"], t.SelectedFields);
+
+            Assert.True(t.ExpandedProperties.ContainsKey("Customer"));
+            Assert.Equal(["Phone"], t.ExpandedProperties["Customer"].SelectedFields);
+
+            Assert.True(t.ExpandedProperties.ContainsKey("Items"));
+            var items = t.ExpandedProperties["Items"];
+            Assert.True(items.ExpandedProperties.ContainsKey("Product"));
+            Assert.Equal(["Code"], items.ExpandedProperties["Product"].SelectedFields);
         }
 
         [Fact]
@@ -130,7 +137,7 @@ namespace OdataQueryLite.Tests
             var t = ExpandParser.Parse("Customer/Orders");
             var customer = t.ExpandedProperties["Customer"];
             Assert.Contains("Orders", customer.ExpandedProperties.Keys);
-            Assert.Empty(customer.SelectedFields ?? new HashSet<string>());
+            Assert.Empty(customer.SelectedFields ?? []);
         }
 
         [Fact]

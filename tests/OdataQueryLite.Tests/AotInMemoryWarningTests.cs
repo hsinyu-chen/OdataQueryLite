@@ -28,7 +28,7 @@ namespace OdataQueryLite.Tests
 
         private sealed class CapturingListener : EventListener
         {
-            public readonly List<EventWrittenEventArgs> Events = new();
+            public readonly List<EventWrittenEventArgs> Events = [];
             private EventSource _attached;
 
             protected override void OnEventSourceCreated(EventSource eventSource)

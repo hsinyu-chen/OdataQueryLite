@@ -43,7 +43,9 @@ namespace OdataQueryLite.AspNetCore.Tests
             return Ok(new
             {
                 Total = q.Count ? result.Unpaged.LongCount() : (long?)null,
-                Data = result.Data.Select(i => new { i.Id, i.Name, i.Price }).ToList(),
+                // Cast<object>() lets the serializer see runtime element type (Item when no
+                // projection runs, Dictionary<string, object?> when $select/$expand projects).
+                Data = result.Data.Cast<object>().ToList(),
             });
         }
     }
