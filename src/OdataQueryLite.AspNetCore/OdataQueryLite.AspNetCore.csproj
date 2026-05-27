@@ -8,7 +8,7 @@
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <IsAotCompatible>true</IsAotCompatible>
     <PackageId>OdataQueryLite.AspNetCore</PackageId>
-    <Version>0.1.0-alpha</Version>
+    <Version>0.1.0</Version>
     <Authors>HsinYu Chen</Authors>
     <Description>ASP.NET Core MVC model binder + middleware glue for OdataQueryLite. One-line setup via services.AddOdataQueryLite() / app.UseOdataQueryLite().</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -16,6 +16,11 @@
     <RepositoryUrl>https://github.com/hsinyu-chen/OdataQueryLite</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>odata;aspnetcore;mvc;modelbinder;middleware</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
 
   <ItemGroup>
@@ -24,6 +29,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\OdataQueryLite\OdataQueryLite.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
 </Project>

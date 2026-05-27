@@ -8,7 +8,7 @@
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <IsAotCompatible>true</IsAotCompatible>
     <PackageId>OdataQueryLite</PackageId>
-    <Version>0.1.0-alpha</Version>
+    <Version>0.1.0</Version>
     <Authors>HsinYu Chen</Authors>
     <Description>Lightweight OData v4 query options parser ($filter / $orderby / $expand / $select) with no Microsoft.AspNetCore.OData dependency.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -16,10 +16,20 @@
     <RepositoryUrl>https://github.com/hsinyu-chen/OdataQueryLite</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>odata;query;parser;filter;expression</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="OdataQueryLite.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
 </Project>

@@ -2,7 +2,7 @@
 
 A lightweight OData v4 **`$filter` / `$orderby` / `$expand` / `$select` / `$top` / `$skip` / `$count`** engine for .NET. No `Microsoft.AspNetCore.OData`, no EDM model, no MVC formatter — just parses the query string and composes `IQueryable<T>` transformations you can hand to EF Core or any LINQ provider.
 
-> **Status:** `0.1.0-alpha`. Parser + expression builder + cache + ASP.NET Core integration shipped. 248 tests, 0 build warnings. Public API may still shift before `1.0.0` — pin the patch version if you depend on it now.
+> **Status:** `0.1.0`. Parser + expression builder + cache + ASP.NET Core integration shipped. 248 tests, 0 build warnings. Public API may still shift before `1.0.0` — pin the patch version if you depend on it now.
 
 ## Why
 
