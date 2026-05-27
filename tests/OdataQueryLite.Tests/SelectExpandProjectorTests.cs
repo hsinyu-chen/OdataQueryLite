@@ -9,6 +9,11 @@ using Xunit;
 
 namespace OdataQueryLite.Tests
 {
+    // Sequential collection — one test mutates SelectExpandProjector.ScalarClassTypes (a
+    // process-global static) to verify the host extension hook. xUnit's default parallel
+    // execution would race that mutation against Reference_expand_emits_nested_dictionary
+    // and similar tests that depend on Customer being classified as a navigation property.
+    [Collection("Sequential")]
     public class SelectExpandProjectorTests
     {
         public sealed class Order
@@ -291,6 +296,43 @@ namespace OdataQueryLite.Tests
 
             var tags = Assert.IsType<List<string>>(projected[0]["Tags"]);
             Assert.Equal(["a", "b"], tags);
+        }
+
+        [Fact]
+        public void Explicit_select_on_navigation_type_projects_as_scalar_instance()
+        {
+            // $select=Id,Customer (no $expand) — client explicitly named Customer, so the
+            // projection must include the Customer instance rather than silently omitting
+            // it as "navigation". The serializer takes it from there.
+            var node = new ExpandRequestNode { SelectedFields = ["Id", "Customer"] };
+            var projected = SelectExpandProjector.Project(Rows(), node)
+                .Cast<Dictionary<string, object?>>().ToList();
+
+            Assert.Equal(2, projected.Count);
+            var customer = Assert.IsType<Customer>(projected[0]["Customer"]);
+            Assert.Equal("Alice", customer.Name);
+        }
+
+        public sealed class IndexerRow
+        {
+            public int Id { get; set; }
+            public string Name { get; set; } = "";
+            public object this[string key] => key;
+        }
+
+        [Fact]
+        public void Filter_on_indexer_named_property_throws_not_found()
+        {
+            // `public object this[string key]` is exposed as a metadata property named "Item".
+            // Without the indexer guard, $filter=Item eq 'x' would call Expression.Property
+            // on the indexer without index args and 500 inside the LINQ provider. The throw
+            // happens at construction time because FilterExpressionBuilder resolves the path
+            // there; wrap the ctor itself in Assert.Throws.
+            var ex = Assert.Throws<OdataQueryException>(() =>
+                new OdataQueryOptions<IndexerRow>(new OdataQueryParts { Filter = "Item eq 'x'" }));
+            Assert.Contains("not found", ex.Message);
+            var available = ex.Message[(ex.Message.IndexOf("Available: ") + "Available: ".Length)..];
+            Assert.DoesNotContain("Item", available);
         }
 
         [Fact]

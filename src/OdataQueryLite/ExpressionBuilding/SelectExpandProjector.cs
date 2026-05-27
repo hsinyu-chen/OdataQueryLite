@@ -153,8 +153,13 @@ namespace OdataQueryLite.ExpressionBuilding
                             $"Property '{name}' on type '{t.Name}' is not a navigation property and cannot be $expanded.");
                     value = BuildExpandedValue(prop, source, childNode!);
                 }
-                else if (isScalarSelected && !IsNavigationLike(prop.PropertyType))
+                else if (isScalarSelected)
                 {
+                    // If the client explicitly named this property in $select, project it
+                    // as-is regardless of nav classification. Lets a host's value object types
+                    // (System.Version, IPAddress, DDD value objects) come through without
+                    // needing entries in ScalarClassTypes. The default-projection branch
+                    // (SelectedFields == null) still hides nav-likes by classification.
                     value = Expression.Property(source, prop);
                 }
 

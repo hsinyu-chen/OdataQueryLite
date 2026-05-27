@@ -76,14 +76,18 @@ namespace OdataQueryLite.ExpressionBuilding
             string name)
         {
             var pi = t.GetProperty(name, BindingFlags.Public | BindingFlags.Instance);
-            // Treat ignored properties as if they didn't exist — same error message so callers
-            // can't discriminate "wrong name" from "hidden by [JsonIgnore]/[OdataIgnore]" and
-            // mount boolean probes like `$filter=startswith(Password, 's')` against them. The
-            // Available list is filtered for the same reason.
-            if (pi != null && !IsIgnored(pi)) return pi;
+            // Treat ignored properties and indexers as if they didn't exist:
+            //  - Ignored ([JsonIgnore]/[OdataIgnore]) — same error so callers can't discriminate
+            //    "wrong name" from "hidden" and mount boolean probes like
+            //    `$filter=startswith(Password, 's')`.
+            //  - Indexers (`public object this[string key]`, default-named "Item" in metadata) —
+            //    Expression.Property without index args throws ArgumentException at execution,
+            //    surfacing as a 500. Filter them at the resolve boundary for a clean 400.
+            // Available list filtered identically so attackers can't enumerate hidden props.
+            if (pi != null && pi.GetIndexParameters().Length == 0 && !IsIgnored(pi)) return pi;
             var available = string.Join(", ",
                 t.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                    .Where(p => !IsIgnored(p))
+                    .Where(p => p.GetIndexParameters().Length == 0 && !IsIgnored(p))
                     .Select(p => p.Name));
             throw new OdataQueryException(
                 $"Property '{name}' not found on type '{t.Name}'. Available: {available}.");
