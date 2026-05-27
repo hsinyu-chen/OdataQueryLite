@@ -87,7 +87,10 @@ namespace OdataQueryLite.ExpressionBuilding
                 MemberNode m => BuildMember(m.Path),
                 ParamRefNode p => RecordAndAccess(p.Index, expectedType),
                 LambdaCollectionNode lc => BuildLambdaCollection(lc),
-                _ => throw new NotSupportedException($"Unsupported filter node: {node.GetType().Name}")
+                // Reachable only if a future FilterNode subtype skips a case here. Stay on
+                // OdataQueryException (not NotSupportedException) so the middleware maps it
+                // to HTTP 400 instead of leaking a BCL exception through as 500.
+                _ => throw new OdataQueryException($"Unsupported filter node: {node.GetType().Name}")
             };
 
             // AndAlso/OrElse/Not/lambda-bodies/top-level filter all require non-nullable bool;
@@ -230,7 +233,10 @@ namespace OdataQueryLite.ExpressionBuilding
                     FunctionName.Round => MathCall(node, nameof(Math.Round)),
                     FunctionName.Floor => MathCall(node, nameof(Math.Floor)),
                     FunctionName.Ceiling => MathCall(node, nameof(Math.Ceiling)),
-                    _ => throw new NotSupportedException($"Function {node.Name} not implemented.")
+                    // Defensive — reachable if a new FunctionName enum value lands without a
+                    // case here. OdataQueryException routes through the middleware to a clean
+                    // HTTP 400 instead of leaking BCL exception details as 500.
+                    _ => throw new OdataQueryException($"Function {node.Name} not implemented.")
                 };
             }
 
@@ -408,7 +414,9 @@ namespace OdataQueryLite.ExpressionBuilding
                     or FunctionName.Year or FunctionName.Month or FunctionName.Day
                     or FunctionName.Hour or FunctionName.Minute or FunctionName.Second => typeof(int),
                 FunctionName.Round or FunctionName.Floor or FunctionName.Ceiling => typeof(double),
-                _ => throw new NotSupportedException($"FunctionReturnType: {fn} not mapped.")
+                // Same future-proofing as BuildFunction's fallback above — stay on
+                // OdataQueryException so a missed enum case maps to 400, not 500.
+                _ => throw new OdataQueryException($"FunctionReturnType: {fn} not mapped.")
             };
 
             private MethodCallExpression BuildLambdaCollection(LambdaCollectionNode node)

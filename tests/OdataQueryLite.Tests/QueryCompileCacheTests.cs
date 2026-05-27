@@ -168,5 +168,23 @@ namespace OdataQueryLite.Tests
             public int Id { get; set; }
             public string Name { get; set; }
         }
+
+        [Fact]
+        public void Failed_compile_does_not_poison_cache_with_dead_entry()
+        {
+            // DoS guard: a query whose shape parses fine but whose Build throws (e.g. unknown
+            // member) must NOT leave a thrown-Lazy entry in the cache — otherwise an attacker
+            // spamming `$filter=Bogus1 eq 1`, `$filter=Bogus2 eq 1`, … fills the cache with
+            // dead entries and evicts every legitimate compiled query.
+            var cache = new QueryCompileCache();
+            Assert.Throws<OdataQueryException>(
+                () => cache.GetOrBuild<Row>("BogusField eq 1", out _));
+            Assert.Equal(0, cache.Count);
+
+            // Subsequent valid queries still cache and execute.
+            var compiled = cache.GetOrBuild<Row>("Name eq 'Alice'", out var parsed);
+            Assert.Equal(1, cache.Count);
+            Assert.Equal(2, compiled.Apply(Source(), parsed.Literals).Count());
+        }
     }
 }

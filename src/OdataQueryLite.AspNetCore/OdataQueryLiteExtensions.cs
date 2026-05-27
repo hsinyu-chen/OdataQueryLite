@@ -40,6 +40,10 @@ namespace OdataQueryLite.AspNetCore
             ArgumentNullException.ThrowIfNull(services);
             var opts = new OdataQueryLiteOptions();
             configure?.Invoke(opts);
+            // Bind the resolved options instance as a singleton so the binder / minimal-API
+            // wrapper can read post-parse knobs (MaxTop, future flags) without re-running the
+            // configure callback per request.
+            services.TryAddSingleton(opts);
             if (opts.UseCache)
                 services.TryAddSingleton(_ => new QueryCompileCache(opts.MaxCacheEntries));
             return services;

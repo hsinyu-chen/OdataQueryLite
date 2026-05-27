@@ -170,5 +170,17 @@ namespace OdataQueryLite.Tests
             Assert.Null(customer.SelectedFields);
             Assert.Contains("Total", orders.SelectedFields);
         }
+
+        [Fact]
+        public void Deeply_nested_expand_options_rejected_before_stack_overflow()
+        {
+            // Mirror of the FilterParser depth-guard test: nested $expand=A($expand=B($expand=…))
+            // can blow the call stack just like deeply parenthesized $filter, and the same depth
+            // counter on ParserState protects ParseList against it.
+            var sb = new System.Text.StringBuilder("A");
+            for (int i = 0; i < 500; i++) sb.Append("($expand=B");
+            for (int i = 0; i < 500; i++) sb.Append(')');
+            Assert.Throws<FilterSyntaxException>(() => ExpandParser.Parse(sb.ToString()));
+        }
     }
 }

@@ -10,10 +10,34 @@ namespace OdataQueryLite.Parsing
     /// <param name="tokens">Tokens to walk; the trailing <see cref="TokenKind.EOF"/> is required.</param>
     public sealed class ParserState(IReadOnlyList<Token> tokens)
     {
+        // Caps recursive nesting (parens, lambda bodies, function args, nested $expand options).
+        // 100 levels is well past any hand-written filter and well short of the ~50K stack frames
+        // that would trigger StackOverflowException — which kills the process unrecoverably.
+        private const int MaxRecursionDepth = 100;
+
         private int _pos;
+        private int _depth;
 
         /// <summary>Returns the current token without advancing.</summary>
         public Token Peek() => tokens[_pos];
+
+        /// <summary>
+        /// Increments the recursion-depth counter; throws when the configured maximum is exceeded.
+        /// Pair with <see cref="ExitRecursion"/> in a try/finally so the counter unwinds correctly on parse failure.
+        /// </summary>
+        /// <exception cref="FilterSyntaxException">Nesting depth exceeded the maximum.</exception>
+        public void EnterRecursion()
+        {
+            if (++_depth > MaxRecursionDepth)
+            {
+                var t = Peek();
+                throw new FilterSyntaxException(
+                    $"expression nesting exceeds maximum depth of {MaxRecursionDepth}", t.Position);
+            }
+        }
+
+        /// <summary>Decrements the recursion-depth counter. Always pair with a preceding <see cref="EnterRecursion"/>.</summary>
+        public void ExitRecursion() => _depth--;
 
         /// <summary>Returns the current token and advances past it.</summary>
         public Token Consume() => tokens[_pos++];

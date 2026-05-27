@@ -35,13 +35,18 @@ namespace OdataQueryLite.Parsing
 
         private static FilterNode ParseOr(ParserState s, List<LiteralValue> literals)
         {
-            var left = ParseAnd(s, literals);
-            while (s.TryConsumeKeyword("or"))
+            s.EnterRecursion();
+            try
             {
-                var right = ParseAnd(s, literals);
-                left = new BinaryNode(BinaryOp.Or, left, right);
+                var left = ParseAnd(s, literals);
+                while (s.TryConsumeKeyword("or"))
+                {
+                    var right = ParseAnd(s, literals);
+                    left = new BinaryNode(BinaryOp.Or, left, right);
+                }
+                return left;
             }
-            return left;
+            finally { s.ExitRecursion(); }
         }
 
         private static FilterNode ParseAnd(ParserState s, List<LiteralValue> literals)
@@ -70,8 +75,14 @@ namespace OdataQueryLite.Parsing
 
         private static FilterNode ParseUnary(ParserState s, List<LiteralValue> literals)
         {
+            // `not` is the one recursion path that doesn't transit ParseOr, so it needs its own
+            // depth guard — otherwise `not not not ... 1 eq 1` walks the call stack unchecked.
             if (s.TryConsumeKeyword("not"))
-                return new UnaryNode(UnaryOp.Not, ParseUnary(s, literals));
+            {
+                s.EnterRecursion();
+                try { return new UnaryNode(UnaryOp.Not, ParseUnary(s, literals)); }
+                finally { s.ExitRecursion(); }
+            }
             return ParsePrimary(s, literals);
         }
 

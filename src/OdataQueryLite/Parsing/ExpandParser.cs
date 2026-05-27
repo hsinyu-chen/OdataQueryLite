@@ -81,6 +81,16 @@ namespace OdataQueryLite.Parsing
 
         private static void ParseList(ParserState s, ExpandRequestNode parent)
         {
+            s.EnterRecursion();
+            try
+            {
+                ParseListBody(s, parent);
+            }
+            finally { s.ExitRecursion(); }
+        }
+
+        private static void ParseListBody(ParserState s, ExpandRequestNode parent)
+        {
             while (true)
             {
                 // Slash-chain is an implicit nested $expand: $expand=Customer/Orders means

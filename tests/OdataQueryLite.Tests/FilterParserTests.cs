@@ -271,5 +271,41 @@ namespace OdataQueryLite.Tests
             var member = Assert.IsType<MemberNode>(bin.Left);
             Assert.Equal(["Things", "any"], member.Path);
         }
+
+        [Fact]
+        public void Deeply_nested_parens_rejected_before_stack_overflow()
+        {
+            // StackOverflowException in .NET cannot be caught — it terminates the process.
+            // An attacker sending thousands of nested parens would otherwise crash the host
+            // outright. ParserState's depth counter aborts well before that.
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < 500; i++) sb.Append('(');
+            sb.Append("1 eq 1");
+            for (int i = 0; i < 500; i++) sb.Append(')');
+            Assert.Throws<FilterSyntaxException>(() => FilterParser.Parse(sb.ToString()));
+        }
+
+        [Fact]
+        public void Deeply_nested_not_rejected_before_stack_overflow()
+        {
+            // `not` recurses without going through ParseOr, so it needs its own depth guard.
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < 500; i++) sb.Append("not ");
+            sb.Append("1 eq 1");
+            Assert.Throws<FilterSyntaxException>(() => FilterParser.Parse(sb.ToString()));
+        }
+
+        [Fact]
+        public void Moderate_paren_depth_still_parses_cleanly()
+        {
+            // Sanity check that the depth cap doesn't reject reasonable hand-written filters.
+            // 20 levels of parens is well past what any real query produces.
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < 20; i++) sb.Append('(');
+            sb.Append("Name eq 'X'");
+            for (int i = 0; i < 20; i++) sb.Append(')');
+            var r = FilterParser.Parse(sb.ToString());
+            Assert.NotNull(r.Ast);
+        }
     }
 }

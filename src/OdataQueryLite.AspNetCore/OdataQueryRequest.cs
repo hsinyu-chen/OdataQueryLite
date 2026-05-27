@@ -45,7 +45,8 @@ namespace OdataQueryLite.AspNetCore
                 AspNetCoreLog.BindingRequest(logger, typeof(T).Name, context.Request.QueryString.Value);
             var parts = OdataQueryPartsFactory.FromQuery(context.Request.Query);
             var cache = context.RequestServices.GetService<QueryCompileCache>();
-            var options = new OdataQueryOptions<T>(parts, cache);
+            var qlOpts = context.RequestServices.GetService<OdataQueryLiteOptions>();
+            var options = new OdataQueryOptions<T>(parts, cache, qlOpts?.MaxTop);
             return ValueTask.FromResult<OdataQueryRequest<T>?>(new OdataQueryRequest<T>(options));
         }
     }

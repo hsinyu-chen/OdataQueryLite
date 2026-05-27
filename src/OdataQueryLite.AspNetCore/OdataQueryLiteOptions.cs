@@ -20,5 +20,13 @@ namespace OdataQueryLite.AspNetCore
         /// <see cref="UseCache"/> is <see langword="false"/>.
         /// </summary>
         public int MaxCacheEntries { get; set; } = 10_000;
+
+        /// <summary>
+        /// Optional upper bound enforced on incoming <c>$top</c>. Requests with a higher value get a
+        /// <see cref="OdataQueryException"/> (HTTP 400 via the middleware) instead of being passed
+        /// through to the data provider. <see langword="null"/> (the default) disables the check —
+        /// match the legacy behavior; opt in only when the surface is exposed to untrusted callers.
+        /// </summary>
+        public int? MaxTop { get; set; }
     }
 }

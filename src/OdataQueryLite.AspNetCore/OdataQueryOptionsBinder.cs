@@ -52,7 +52,8 @@ namespace OdataQueryLite.AspNetCore
             // (or by registering it themselves). Absent registration = no cross-request
             // compile reuse, which is correct behavior for small surfaces and tests.
             var cache = http.RequestServices.GetService<QueryCompileCache>();
-            var options = new OdataQueryOptions<T>(parts, cache);
+            var qlOpts = http.RequestServices.GetService<OdataQueryLiteOptions>();
+            var options = new OdataQueryOptions<T>(parts, cache, qlOpts?.MaxTop);
             bindingContext.Result = ModelBindingResult.Success(options);
             return Task.CompletedTask;
         }

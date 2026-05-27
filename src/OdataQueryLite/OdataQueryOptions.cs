@@ -59,12 +59,13 @@ namespace OdataQueryLite
         /// </summary>
         /// <param name="parts">The raw query options.</param>
         /// <param name="cache">Optional cross-request compile cache; when <see langword="null"/> every call recompiles.</param>
-        /// <exception cref="OdataQueryException">Negative <c>$top</c>/<c>$skip</c>, or any parse failure inside the supplied <c>$</c>-options.</exception>
+        /// <param name="maxTop">Optional upper bound on <c>$top</c>; values above it throw <see cref="OdataQueryException"/>. <see langword="null"/> disables the check.</param>
+        /// <exception cref="OdataQueryException">Negative <c>$top</c>/<c>$skip</c>, <c>$top</c> above <paramref name="maxTop"/>, or any parse failure inside the supplied <c>$</c>-options.</exception>
         /// <exception cref="UnsupportedQueryOptionException"><c>$apply</c> was supplied.</exception>
         /// <exception cref="ArgumentNullException"><paramref name="parts"/> is <see langword="null"/>.</exception>
         [RequiresUnreferencedCode("Compiles a filter Expression tree that accesses T's public properties by name; T's properties must be preserved by the trimmer.")]
         [RequiresDynamicCode("Builds Expression<Func<T, bool>> / Func<T, TKey> at runtime; AOT may require dynamic-code support depending on the IQueryable provider.")]
-        public OdataQueryOptions(OdataQueryParts parts, QueryCompileCache? cache = null)
+        public OdataQueryOptions(OdataQueryParts parts, QueryCompileCache? cache = null, int? maxTop = null)
         {
             ArgumentNullException.ThrowIfNull(parts);
 
@@ -79,6 +80,11 @@ namespace OdataQueryLite
                 throw new OdataQueryException($"$top must be a non-negative integer; got {t}.");
             if (parts.Skip is int s and < 0)
                 throw new OdataQueryException($"$skip must be a non-negative integer; got {s}.");
+            // Caller-configured ceiling so `$top=2147483647` against a 50M-row table doesn't
+            // translate to TOP(int.MaxValue) and OOM the database. Off by default — host opts
+            // in via OdataQueryLiteOptions.MaxTop (AspNetCore package) or by passing maxTop here.
+            if (parts.Top is int requested && maxTop is int max && requested > max)
+                throw new OdataQueryException($"$top exceeds the configured maximum of {max}; got {requested}.");
 
             RawFilter = parts.Filter;
             RawOrderBy = parts.OrderBy;

@@ -95,7 +95,21 @@ namespace OdataQueryLite.Caching
                 Compiled = new Lazy<object>(() => CompiledQueryFactory.Build<T>(local)),
                 LastUsedTicks = now
             });
-            return (ICompiledQuery<T>)entry.Compiled.Value;
+            try
+            {
+                return (ICompiledQuery<T>)entry.Compiled.Value;
+            }
+            catch
+            {
+                // The Lazy caches the exception, so without this TryRemove the entry would sit
+                // forever consuming a cache slot — an attacker spamming random invalid field
+                // names ($filter=Bogus1 eq 1, $filter=Bogus2 eq 1, …) could otherwise evict
+                // every hot legitimate query. Race-safe: concurrent failed builds either land
+                // on the same dead entry (one TryRemove wins, others no-op) or have already
+                // raced past us into a fresh entry that doesn't share state.
+                _cache.TryRemove(key, out _);
+                throw;
+            }
         }
 
         private void EvictColdest(int count)

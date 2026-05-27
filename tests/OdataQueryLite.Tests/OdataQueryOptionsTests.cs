@@ -181,5 +181,35 @@ namespace OdataQueryLite.Tests
             Assert.Equal(1, cache.Hits);
             Assert.Equal(1, cache.Misses);
         }
+
+        [Fact]
+        public void Top_exceeding_maxTop_rejected_at_construction()
+        {
+            // MaxTop guards against `$top=int.MaxValue` translating to TOP(int.MaxValue) and
+            // OOM-ing the database. Host opts in by passing a non-null bound.
+            var ex = Assert.Throws<OdataQueryException>(() =>
+                new OdataQueryOptions<Item>(new OdataQueryParts { Top = 5000 }, cache: null, maxTop: 1000));
+            Assert.Contains("$top", ex.Message);
+            Assert.Contains("1000", ex.Message);
+        }
+
+        [Fact]
+        public void Top_within_maxTop_accepted()
+        {
+            // Boundary: exactly equal to MaxTop is allowed.
+            var opts = new OdataQueryOptions<Item>(
+                new OdataQueryParts { Top = 1000 }, cache: null, maxTop: 1000);
+            Assert.Equal(1000, opts.Top);
+        }
+
+        [Fact]
+        public void Null_maxTop_disables_the_check()
+        {
+            // Default behavior (no MaxTop configured) matches the legacy ApplyTo: any positive
+            // $top passes through. Host opts in only when the surface is exposed to untrusted callers.
+            var opts = new OdataQueryOptions<Item>(
+                new OdataQueryParts { Top = int.MaxValue }, cache: null, maxTop: null);
+            Assert.Equal(int.MaxValue, opts.Top);
+        }
     }
 }
