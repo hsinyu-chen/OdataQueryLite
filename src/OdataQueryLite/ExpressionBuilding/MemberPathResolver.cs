@@ -84,10 +84,13 @@ namespace OdataQueryLite.ExpressionBuilding
             //    Expression.Property without index args throws ArgumentException at execution,
             //    surfacing as a 500. Filter them at the resolve boundary for a clean 400.
             // Available list filtered identically so attackers can't enumerate hidden props.
-            if (pi != null && pi.GetIndexParameters().Length == 0 && !IsIgnored(pi)) return pi;
+            // GetGetMethod() != null (vs PropertyInfo.CanRead, which counts non-public
+            // getters too) rules out `public set; private get;` properties — Expression.Property
+            // would otherwise hit them with no public accessor and 500 at execution.
+            if (pi != null && pi.GetIndexParameters().Length == 0 && pi.GetGetMethod() != null && !IsIgnored(pi)) return pi;
             var available = string.Join(", ",
                 GetPropertiesIncludingInterfaces(t)
-                    .Where(p => p.GetIndexParameters().Length == 0 && !IsIgnored(p))
+                    .Where(p => p.GetIndexParameters().Length == 0 && p.GetGetMethod() != null && !IsIgnored(p))
                     .Select(p => p.Name)
                     .Distinct());
             throw new OdataQueryException(

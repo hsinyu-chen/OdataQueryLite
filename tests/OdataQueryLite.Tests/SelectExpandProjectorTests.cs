@@ -298,6 +298,27 @@ namespace OdataQueryLite.Tests
             Assert.Equal(["a", "b"], tags);
         }
 
+        public sealed class WriteOnlyGetterRow
+        {
+            public int Id { get; set; }
+            // Public setter, private getter — PropertyInfo.CanRead returns true but
+            // Expression.Property compilation requires a PUBLIC getter.
+            private string _password = "";
+            public string Password { private get => _password; set => _password = value; }
+        }
+
+        [Fact]
+        public void Property_with_private_getter_treated_as_invisible()
+        {
+            // Filter / orderby / select on a private-getter property must fail cleanly at
+            // resolve time, not crash at Expression.Property compilation.
+            var ex = Assert.Throws<OdataQueryException>(() =>
+                new OdataQueryOptions<WriteOnlyGetterRow>(new OdataQueryParts { Filter = "Password eq 'x'" }));
+            Assert.Contains("not found", ex.Message);
+            var available = ex.Message[(ex.Message.IndexOf("Available: ") + "Available: ".Length)..];
+            Assert.DoesNotContain("Password", available);
+        }
+
         [Fact]
         public void Dollar_count_terminal_path_does_not_crash_validation()
         {

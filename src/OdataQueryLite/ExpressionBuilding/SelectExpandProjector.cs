@@ -141,7 +141,9 @@ namespace OdataQueryLite.ExpressionBuilding
             // ArgumentException on duplicate key at execution.
             foreach (var prop in MemberPathResolver.GetPropertiesIncludingInterfaces(t).DistinctBy(p => p.Name))
             {
-                if (!prop.CanRead) continue;
+                // GetGetMethod() ignores non-public getters; CanRead would tolerate
+                // `public set; private get;` which Expression.Property then chokes on.
+                if (prop.GetGetMethod() is null) continue;
                 // Skip indexers (`public object this[string key]`) — Expression.Property
                 // requires an index argument and throws ArgumentException otherwise.
                 if (prop.GetIndexParameters().Length > 0) continue;
