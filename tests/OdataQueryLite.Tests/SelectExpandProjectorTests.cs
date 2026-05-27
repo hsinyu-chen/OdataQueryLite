@@ -510,9 +510,11 @@ namespace OdataQueryLite.Tests
         {
             // Two parent interfaces both expose Id; GetPropertiesIncludingInterfaces would
             // surface it twice without DistinctBy, and the Dictionary ctor would throw
-            // ArgumentException at projection-build time.
-            var ex = Record.Exception(() =>
-                new OdataQueryOptions<IBothIds>(new OdataQueryParts { Select = "Id" }));
+            // ArgumentException at projection-build time. Apply triggers the projection
+            // lambda compilation — the ctor alone doesn't, so we need to enumerate.
+            var source = Enumerable.Empty<IBothIds>().AsQueryable();
+            var opts = new OdataQueryOptions<IBothIds>(new OdataQueryParts { Select = "Id" });
+            var ex = Record.Exception(() => opts.Apply(source).Data.Cast<Dictionary<string, object?>>().ToList());
             Assert.Null(ex);
         }
 
