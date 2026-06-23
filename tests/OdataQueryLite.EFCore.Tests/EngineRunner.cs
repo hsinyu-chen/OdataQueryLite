@@ -61,11 +61,12 @@ namespace OdataQueryLite.EFCore.Tests
 
                 // ToQueryString() forces SQL translation WITHOUT executing. An untranslatable filter
                 // throws here and is caught below as a translation gap. The returned SQL also reveals
-                // whether literals were parameterized (@-marker) — the cache design requires it.
-                // Order-by / projection live on Data, not Unpaged; their translation is exercised by
-                // Materialize below (the same catch classifies a throw as ClientEval).
+                // whether literals were parameterized (@-marker on SQLite / SQL Server, $-marker on
+                // PostgreSQL) — the cache design requires it. Order-by / projection live on Data, not
+                // Unpaged; their translation is exercised by Materialize below (the same catch
+                // classifies a throw as ClientEval).
                 string sql = result.Unpaged.ToQueryString();
-                bool parameterized = sql.Contains('@');
+                bool parameterized = sql.Contains('@') || sql.Contains('$');
 
                 var rows = Materialize(result.Data);
                 long? count = c.Count ? result.Unpaged.LongCount() : null;

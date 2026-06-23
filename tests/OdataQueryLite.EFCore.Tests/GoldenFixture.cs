@@ -87,22 +87,23 @@ namespace OdataQueryLite.EFCore.Tests
         {
             if (row is null) return null;
 
-            if (row is IDictionary<string, object?> dict)
+            // Non-generic IDictionary so any dictionary the engine projects to (not strictly
+            // Dictionary<string, object?>) still takes the projection path rather than reflection.
+            if (row is System.Collections.IDictionary dict)
             {
                 var clean = new Dictionary<string, object?>(StringComparer.Ordinal);
-                foreach (var (k, v) in dict)
-                    clean[k] = NormalizeProjectedValue(v);
+                foreach (System.Collections.DictionaryEntry entry in dict)
+                    if (entry.Key is string k) clean[k] = NormalizeProjectedValue(entry.Value);
                 return clean;
             }
 
             // Entity (no projection): emit scalar/primitive properties only, skip navs/collections.
             var type = row.GetType();
             var result = new Dictionary<string, object?>(StringComparer.Ordinal);
-            foreach (var p in type.GetProperties())
+            foreach (var p in type.GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
             {
-                if (p.GetIndexParameters().Length > 0) continue;
-                var pt = p.PropertyType;
-                if (!IsScalar(pt)) continue; // skip Item Parent / Category / ICollection<Tag>
+                if (!p.CanRead || p.GetIndexParameters().Length > 0) continue;
+                if (!IsScalar(p.PropertyType)) continue; // skip Item Parent / Category / ICollection<Tag>
                 result[p.Name] = Stringify(p.GetValue(row));
             }
             return result;
@@ -111,10 +112,11 @@ namespace OdataQueryLite.EFCore.Tests
         private static object? NormalizeProjectedValue(object? v)
         {
             if (v is null) return null;
-            if (v is IDictionary<string, object?> nested)
+            if (v is System.Collections.IDictionary nested)
             {
                 var clean = new Dictionary<string, object?>(StringComparer.Ordinal);
-                foreach (var (k, vv) in nested) clean[k] = NormalizeProjectedValue(vv);
+                foreach (System.Collections.DictionaryEntry entry in nested)
+                    if (entry.Key is string k) clean[k] = NormalizeProjectedValue(entry.Value);
                 return clean;
             }
             if (v is System.Collections.IEnumerable en and not string)
@@ -143,7 +145,8 @@ namespace OdataQueryLite.EFCore.Tests
         {
             var u = Nullable.GetUnderlyingType(t) ?? t;
             return u.IsPrimitive || u.IsEnum || u == typeof(string) || u == typeof(decimal)
-                || u == typeof(DateTime) || u == typeof(DateTimeOffset) || u == typeof(Guid);
+                || u == typeof(DateTime) || u == typeof(DateTimeOffset) || u == typeof(Guid)
+                || u == typeof(DateOnly) || u == typeof(TimeOnly);
         }
 
         public static List<Dictionary<string, JsonElement>> CanonicalizeRows(IEnumerable<object> rows)
