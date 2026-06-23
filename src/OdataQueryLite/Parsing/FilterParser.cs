@@ -216,12 +216,8 @@ namespace OdataQueryLite.Parsing
             }
         }
 
-        private static object ParseNumber(string text)
-        {
-            if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var l)) return l;
-            if (decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var d)) return d;
-            return double.Parse(text, CultureInfo.InvariantCulture);
-        }
+        // Shared with LexedQuery's cache-key shape tag so the parsed slot type and the shape can't drift.
+        private static object ParseNumber(string text) => NumericLiteralClassifier.Parse(text);
 
         private static DateTimeOffset ParseDate(string text, int pos)
         {

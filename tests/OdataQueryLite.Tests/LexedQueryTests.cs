@@ -48,17 +48,22 @@ namespace OdataQueryLite.Tests
         }
 
         [Fact]
-        public void Untyped_shape_collapses_every_literal_to_a_single_placeholder()
+        public void Untyped_shape_tags_numbers_by_kind_but_collapses_other_literals()
         {
-            // Cache key mode: null and non-null calls for the same query template hit the
-            // same entry. Stops O(2^N) fragmentation when a template has many slots that
-            // can each be null or not per request.
-            var withValue = OdataLexer.Tokenize("Name eq 'X' and Age gt 30").ToShapeString(typed: false);
-            var withNull = OdataLexer.Tokenize("Name eq null and Age gt 30").ToShapeString(typed: false);
-            var bothNull = OdataLexer.Tokenize("Name eq null and Age gt null").ToShapeString(typed: false);
-            Assert.Equal(withValue, withNull);
-            Assert.Equal(withValue, bothNull);
-            Assert.Equal("Name eq ? and Age gt ?", withValue);
+            // Cache key mode: a non-numeric slot renders `?` whether null or set, so null and non-null
+            // calls for the same template share one entry (stops O(2^N) fragmentation across many slots).
+            var strValue = OdataLexer.Tokenize("Name eq 'X' and Age gt 30").ToShapeString(typed: false);
+            var strNull = OdataLexer.Tokenize("Name eq null and Age gt 30").ToShapeString(typed: false);
+            Assert.Equal(strValue, strNull);
+            Assert.Equal("Name eq ? and Age gt ?int", strValue);
+
+            // Numeric literals additionally carry a CLR-kind tag — integer and fractional literals resolve
+            // to different slot types, so they MUST get distinct keys to keep the slot deterministic.
+            Assert.Equal("Amount gt ?int", OdataLexer.Tokenize("Amount gt 30").ToShapeString(typed: false));
+            Assert.Equal("Amount gt ?dec", OdataLexer.Tokenize("Amount gt 9.99").ToShapeString(typed: false));
+            Assert.NotEqual(
+                OdataLexer.Tokenize("Amount gt 30").ToShapeString(typed: false),
+                OdataLexer.Tokenize("Amount gt 9.99").ToShapeString(typed: false));
         }
 
         [Fact]

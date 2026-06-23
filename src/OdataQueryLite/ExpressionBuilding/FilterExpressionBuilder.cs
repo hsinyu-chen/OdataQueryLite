@@ -118,9 +118,11 @@ namespace OdataQueryLite.ExpressionBuilding
                 var rightSlot = preRight != null
                     ? TypeCoercion.SlotTypeFor(preRight.Type)
                     : TryResolveOperandSlotType(node.Right);
-                // Both sides numeric but at different ranks (e.g. int member vs decimal
-                // literal) — widen to the larger so a fractional literal doesn't narrow
-                // and banker-round into a spurious hit.
+
+                // Both sides numeric but at different ranks (e.g. int member vs decimal literal) — widen
+                // to the larger so the comparison runs in the wider type and a fractional literal isn't
+                // narrowed. The cache key tags each numeric literal by kind (LexedQuery), so this promoted
+                // slot stays a deterministic function of (T, shape) and integer literals keep an integer slot.
                 var slot = leftSlot != null && rightSlot != null && leftSlot != rightSlot
                     ? PromoteNumeric(leftSlot, rightSlot)
                     : (leftSlot ?? rightSlot ?? typeof(object));
@@ -150,7 +152,12 @@ namespace OdataQueryLite.ExpressionBuilding
                 : t == typeof(short) || t == typeof(ushort) || t == typeof(byte) || t == typeof(sbyte) ? 0
                 : -1;
 
-            private static Type? TryResolveOperandSlotType(FilterNode operand) => operand switch
+            // Instance (not static) so a numeric literal's slot follows its PARSED CLR type — an integer
+            // literal gets an integer slot, a fractional one decimal — and PromoteNumeric then widens it
+            // against the member. The untyped cache-key shape tags numbers by kind (LexedQuery), so the
+            // resolved slot stays a deterministic function of (T, shape) and a plain `Quantity eq 10`
+            // keeps the integer slot SQLite (decimal-as-TEXT) can equality-match.
+            private Type? TryResolveOperandSlotType(FilterNode operand) => operand switch
             {
                 FunctionNode f => TypeCoercion.SlotTypeFor(FunctionReturnType(f.Name)),
                 // Bool-returning nodes — without these, `(A eq B) eq true` and
@@ -160,12 +167,18 @@ namespace OdataQueryLite.ExpressionBuilding
                 // Literal-vs-literal (e.g. dynamic-builder `1 eq 1 and …`) — without these,
                 // both sides slot to typeof(object) and EmitCompare does reference equality
                 // on boxed primitives, returning false for identical values in-memory.
-                ParamRefNode { Kind: LiteralKind.Number } => typeof(decimal?),
+                ParamRefNode { Kind: LiteralKind.Number } p => TypeCoercion.SlotTypeFor(NumericLiteralType(p.Index)),
                 ParamRefNode { Kind: LiteralKind.Boolean } => typeof(bool?),
                 ParamRefNode { Kind: LiteralKind.DateTime } => typeof(DateTimeOffset?),
                 ParamRefNode { Kind: LiteralKind.String } => typeof(string),
                 _ => null
             };
+
+            // FilterParser.ParseNumber boxes an integer literal as long and a fractional one as decimal
+            // (double only on decimal overflow); the slot follows that type. Falls back to decimal if a
+            // slot is somehow probed for a missing literal.
+            private Type NumericLiteralType(int index) =>
+                (index >= 0 && index < _literals.Count ? _literals[index].Value?.GetType() : null) ?? typeof(decimal);
 
             private static BinaryExpression EmitCompare(BinaryOp op, Expression l, Expression r) => op switch
             {

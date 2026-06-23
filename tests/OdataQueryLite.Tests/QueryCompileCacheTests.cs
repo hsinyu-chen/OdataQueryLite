@@ -100,8 +100,9 @@ namespace OdataQueryLite.Tests
         [Fact]
         public void Soft_cap_triggers_eviction_of_coldest_entries()
         {
-            // Note: untyped shape collapses literals, so `Id eq 1` and `Id eq 2` share a key.
-            // The 10 queries below all produce distinct shapes (different member or operator).
+            // Note: untyped shape collapses same-kind literals, so `Id eq 1` and `Id eq 2` share a key
+            // (both integers → `?int`). The 10 queries below all produce distinct shapes (different member
+            // or operator).
             var cache = new QueryCompileCache(maxEntries: 10);
             string[] shapes =
             [
@@ -120,7 +121,7 @@ namespace OdataQueryLite.Tests
 
             Assert.True(cache.Count <= 10, $"Count {cache.Count} should not exceed cap after eviction.");
             // The touched-hot entries should still be present.
-            Assert.True(cache.Contains(new QueryShapeKey(typeof(Row), "Id eq ?")));
+            Assert.True(cache.Contains(new QueryShapeKey(typeof(Row), "Id eq ?int")));
             Assert.True(cache.Contains(new QueryShapeKey(typeof(Row), "Name eq ?")));
         }
 
