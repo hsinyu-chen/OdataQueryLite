@@ -60,45 +60,42 @@ namespace OdataQueryLite.EFCore.Tests.Model
         {
             var builder = new DbContextOptionsBuilder<TestDbContext>();
 
-            if (HarnessConfig.Provider == "localdb")
+            // Server-hosted providers start each run from a clean DB (EnsureDeleted); SQLite ":memory:"
+            // has nothing to drop — see the default branch.
+            bool freshDrop;
+            switch (HarnessConfig.Provider)
             {
-                // SQL Server LocalDB translates date/math functions, DateTimeOffset ORDER BY, and native
-                // decimal that SQLite cannot. EnsureDeleted+EnsureCreated gives a fresh deterministic DB
-                // per construction so the oracle (Tier 3) and the engine run see identical seeded data.
-                builder.UseSqlServer(@"Server=(localdb)\MSSQLLocalDB;Database=OdataDiffHarness;Trusted_Connection=True;TrustServerCertificate=True");
-                configure?.Invoke(builder);
-                Context = new TestDbContext(builder.Options);
-                Context.Database.EnsureDeleted();
-                Context.Database.EnsureCreated();
-                TestSeed.Apply(Context);
+                case "localdb":
+                    // SQL Server LocalDB translates date/math, DateTimeOffset ORDER BY, and native decimal
+                    // that SQLite cannot.
+                    builder.UseSqlServer(@"Server=(localdb)\MSSQLLocalDB;Database=OdataDiffHarness;Trusted_Connection=True;TrustServerCertificate=True");
+                    freshDrop = true;
+                    break;
+                case "postgres":
+                    // Real PostgreSQL — connection string from the env, never committed; point it at a
+                    // DEDICATED database, never shared application data (EnsureDeleted drops it).
+                    builder.UseNpgsql(HarnessConfig.PgConnectionString
+                        ?? throw new InvalidOperationException(
+                            "postgres provider selected but ODATA_HARNESS_PG_CONNSTRING is not set."));
+                    freshDrop = true;
+                    break;
+                default:
+                    // SQLite ":memory:" lives only while its connection is open, so the factory owns the
+                    // connection for the context's whole lifetime; nothing to EnsureDeleted.
+                    _connection = new SqliteConnection("DataSource=:memory:");
+                    _connection.Open();
+                    builder.UseSqlite(_connection);
+                    freshDrop = false;
+                    break;
             }
-            else if (HarnessConfig.Provider == "postgres")
-            {
-                // Real PostgreSQL (connection string from the env, never committed). EnsureDeleted+
-                // EnsureCreated gives a fresh deterministic DB per run — point it at a DEDICATED
-                // database, never shared application data.
-                var cs = HarnessConfig.PgConnectionString
-                    ?? throw new InvalidOperationException(
-                        "postgres provider selected but ODATA_HARNESS_PG_CONNSTRING is not set.");
-                builder.UseNpgsql(cs);
-                configure?.Invoke(builder);
-                Context = new TestDbContext(builder.Options);
-                Context.Database.EnsureDeleted();
-                Context.Database.EnsureCreated();
-                TestSeed.Apply(Context);
-            }
-            else
-            {
-                // ":memory:" databases live only as long as the connection is open, so the factory
-                // owns the connection for the whole context lifetime rather than per-context.
-                _connection = new SqliteConnection("DataSource=:memory:");
-                _connection.Open();
-                builder.UseSqlite(_connection);
-                configure?.Invoke(builder);
-                Context = new TestDbContext(builder.Options);
-                Context.Database.EnsureCreated();
-                TestSeed.Apply(Context);
-            }
+
+            // Shared tail: optional caller config, then a fresh deterministic DB + seed so the oracle
+            // (Tier 3) and the engine run see identical data.
+            configure?.Invoke(builder);
+            Context = new TestDbContext(builder.Options);
+            if (freshDrop) Context.Database.EnsureDeleted();
+            Context.Database.EnsureCreated();
+            TestSeed.Apply(Context);
         }
 
         public void Dispose()
