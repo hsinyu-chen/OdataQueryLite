@@ -74,9 +74,9 @@ namespace OdataQueryLite.Tests
         public void Gt_on_nullable_int_lifted_to_nullable_slot()
         {
             var c = Compile<Customer>("Age gt 30");
-            // Slot widens to decimal? — integer member vs Number literal promotes to the
-            // wider numeric so fractional literals don't narrow.
-            Assert.Equal(typeof(decimal?), c.SlotTypes[0]);
+            // Integer literal slots as long? (its parsed type); the nullable-int member promotes to it.
+            // Stays an integer comparison — no decimal cast that SQLite (decimal-as-TEXT) can't match.
+            Assert.Equal(typeof(long?), c.SlotTypes[0]);
             Assert.True(c.Match(new Customer { Age = 35 }));
             Assert.False(c.Match(new Customer { Age = 30 }));
             Assert.False(c.Match(new Customer { Age = null }));
@@ -233,8 +233,8 @@ namespace OdataQueryLite.Tests
             // LastSeenAt is DateTimeOffset?. year(...) on null row must NOT throw and must
             // not match — OData null-propagation: result is null → comparison silently false.
             var c = Compile<Customer>("year(LastSeenAt) eq 2024");
-            // year returns int; literal is Number (decimal). Slot widens to decimal?.
-            Assert.Equal(typeof(decimal?), c.SlotTypes[0]);
+            // year returns int; the integer literal slots as long? and promotes the comparison to long?.
+            Assert.Equal(typeof(long?), c.SlotTypes[0]);
             Assert.True(c.Match(new Customer { LastSeenAt = new DateTimeOffset(2024, 5, 1, 0, 0, 0, TimeSpan.Zero) }));
             Assert.False(c.Match(new Customer { LastSeenAt = new DateTimeOffset(2023, 5, 1, 0, 0, 0, TimeSpan.Zero) }));
             Assert.False(c.Match(new Customer { LastSeenAt = null }));
@@ -482,9 +482,9 @@ namespace OdataQueryLite.Tests
         [Fact]
         public void Int_member_eq_25_fractional_literal_should_not_match_id_2()
         {
-            // Spec: 2 eq 2.5 must be false. Current slot picks Id (int) and Coerce(2.5m,
-            // Number, int?) banker-rounds to 2 — making `Id eq 2.5` against Id=2 a spurious
-            // hit. Failing test documents the bug for the follow-up common-type widening fix.
+            // Spec: 2 eq 2.5 must be false — not a spurious match, not a 400. The `?dec` shape tag gives
+            // the fractional literal a decimal slot, so PromoteNumeric widens Id to decimal and compares
+            // 2.0 vs 2.5 → false. (No banker-rounding into int; the integer path keeps its integer slot.)
             Assert.False(Compile<Customer>("Id eq 2.5").Match(new Customer { Id = 2 }));
         }
 

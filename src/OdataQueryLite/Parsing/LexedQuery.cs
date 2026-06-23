@@ -6,7 +6,8 @@ namespace OdataQueryLite.Parsing
     /// <summary>
     /// Wrapper around an <see cref="OdataLexer"/> token list. Exposes three renderings: verbatim
     /// (<see cref="ToString"/>), typed shape (<see cref="ToShapeString"/> with <c>typed: true</c>), and
-    /// untyped shape (the cache-key form, where every literal collapses to a single <c>?</c>).
+    /// untyped shape (the cache-key form: non-numeric literals collapse to a single <c>?</c>, numeric
+    /// literals carry a CLR-kind tag — <c>?int</c> / <c>?dec</c> / <c>?dbl</c>).
     /// </summary>
     /// <param name="tokens">Tokens as emitted by <see cref="OdataLexer.Tokenize"/>.</param>
     public sealed class LexedQuery(IReadOnlyList<Token> tokens)
@@ -20,8 +21,9 @@ namespace OdataQueryLite.Parsing
 
         /// <summary>
         /// Renders the query with literal placeholders. Typed (<c>?str</c> / <c>?num</c> / ...) is for
-        /// debugging; untyped (single <c>?</c>) is the form used as the compiled-query cache key so a null
-        /// vs non-null literal doesn't fragment the cache.
+        /// debugging; untyped is the compiled-query cache key — a null vs non-null literal of the same
+        /// kind doesn't fragment the cache, while integer / decimal / double literals get distinct tags
+        /// (they resolve to different slot types, so they must not share a key).
         /// </summary>
         /// <param name="typed">Use kind-tagged placeholders when <see langword="true"/>; single <c>?</c> otherwise.</param>
         /// <returns>The rendered shape.</returns>
@@ -65,7 +67,13 @@ namespace OdataQueryLite.Parsing
                 LiteralRenderMode.Typed => "?str",
                 _ => "?"
             },
-            TokenKind.NumberLiteral => mode == LiteralRenderMode.Verbatim ? t.Text : (mode == LiteralRenderMode.Typed ? "?num" : "?"),
+            TokenKind.NumberLiteral => mode == LiteralRenderMode.Verbatim ? t.Text
+                : mode == LiteralRenderMode.Typed ? "?num"
+                // Untyped cache key: tag numeric literals by CLR kind (?int / ?dec / ?dbl). Integer and
+                // fractional literals resolve to different slot types, so collapsing them to one `?` would
+                // map a single cache key to two slots; distinct tags keep the slot a deterministic function
+                // of the shape. Non-numeric literals still collapse to `?`.
+                : "?" + NumericLiteralClassifier.ShapeTag(t.Text),
             TokenKind.BoolLiteral => mode == LiteralRenderMode.Verbatim ? t.Text : (mode == LiteralRenderMode.Typed ? "?bool" : "?"),
             TokenKind.DateTimeLiteral => mode == LiteralRenderMode.Verbatim ? t.Text : (mode == LiteralRenderMode.Typed ? "?date" : "?"),
             TokenKind.NullLiteral => mode == LiteralRenderMode.Verbatim ? "null" : (mode == LiteralRenderMode.Typed ? "?null" : "?"),
