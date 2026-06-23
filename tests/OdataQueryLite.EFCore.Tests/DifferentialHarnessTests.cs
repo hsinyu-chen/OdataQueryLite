@@ -24,9 +24,9 @@ namespace OdataQueryLite.EFCore.Tests
         }
 
         // ── PLUMBING SMOKE TEST ────────────────────────────────────────────────────────────────
-        // Runs 2 trivial cases through the engine runner end-to-end: confirms SQLite is the provider,
-        // the client-eval listener is wired, the golden is read, and the comparison+report works.
-        // Does NOT run the full B+A corpus (that's the on-demand report-generation run below).
+        // Runs 2 trivial cases through the engine runner end-to-end: confirms a real SQL-translating
+        // provider is in use, the translation-failure probe runs, the golden is read, and the
+        // comparison+report works. Does NOT run the full B+A corpus (that's the on-demand run below).
         [Fact]
         public void Smoke_Plumbing_EndToEnd()
         {
@@ -35,7 +35,9 @@ namespace OdataQueryLite.EFCore.Tests
 
             // Confirm a real translating provider (never the EF InMemory provider) is in use.
             Assert.True(
-                db.Database.ProviderName is "Microsoft.EntityFrameworkCore.Sqlite" or "Microsoft.EntityFrameworkCore.SqlServer",
+                db.Database.ProviderName is "Microsoft.EntityFrameworkCore.Sqlite"
+                    or "Microsoft.EntityFrameworkCore.SqlServer"
+                    or "Npgsql.EntityFrameworkCore.PostgreSQL",
                 $"expected a real SQL-translating provider, got '{db.Database.ProviderName}'");
 
             var golden = LoadGolden();

@@ -30,7 +30,7 @@ namespace OdataQueryLite.EFCore.Tests
     }
 
     /// <summary>
-    /// Drives one corpus case through the engine against SQLite-backed data and classifies the result
+    /// Drives one corpus case through the engine against the configured EF Core provider and classifies the result
     /// against the golden oracle. NEVER throws on divergence — divergence is recorded and returned.
     /// SQL-translation gaps are detected via <c>ToQueryString()</c> (the filter throws there when it
     /// cannot be translated — EF Core 10's replacement for the removed QueryClientEvaluationWarning)

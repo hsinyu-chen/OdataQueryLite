@@ -47,8 +47,8 @@ namespace OdataQueryLite.EFCore.Tests.Model
     /// <summary>
     /// Builds a real, SQL-translating EF Core context for the harness — never the EF InMemory provider
     /// (which does zero SQL translation). The backend is chosen by <see cref="HarnessConfig.Provider"/>:
-    /// SQLite in-memory (default) or SQL Server LocalDB. Applies the deterministic seed. Dispose tears
-    /// the context down (and, for SQLite, closes the connection that owns the in-memory database).
+    /// SQLite in-memory (default), SQL Server LocalDB, or PostgreSQL. Applies the deterministic seed.
+    /// Dispose tears the context down (and, for SQLite, closes the connection that owns the in-memory database).
     /// </summary>
     public sealed class TestDbFactory : IDisposable
     {
